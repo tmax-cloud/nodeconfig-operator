@@ -1,5 +1,5 @@
 /*
-Copyright 2021.
+Copyright 2019 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,22 +20,61 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// Format specifies the output format of the bootstrap data
+// +kubebuilder:validation:Enum=cloud-config
+type Format string
+
+const (
+	// CloudConfig make the bootstrap data to be of cloud-config format
+	CloudConfig Format = "cloud-config"
+)
+
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // NodeConfigSpec defines the desired state of NodeConfig
 type NodeConfigSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Files specifies extra files to be passed to user_data upon creation.
+	// +optional
+	Files []File `json:"files,omitempty"`
 
-	// Foo is an example field of NodeConfig. Edit nodeconfig_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// CloudInitCommands specifies extra commands to run after systemd
+	// +optional
+	CloudInitCommands []string `json:"cloudInitCommands,omitempty"`
+
+	// Users specifies extra users to add
+	// +optional
+	Users []User `json:"users,omitempty"`
+
+	// NTP specifies NTP configuration
+	// +optional
+	NTP *NTP `json:"ntp,omitempty"`
+
+	// Format specifies the output format of the bootstrap data
+	// +optional
+	Format Format `json:"format,omitempty"`
 }
 
 // NodeConfigStatus defines the observed state of NodeConfig
 type NodeConfigStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Ready indicates the BootstrapData field is ready to be consumed
+	Ready bool `json:"ready,omitempty"`
+
+	// DataSecretName is the name of the secret that stores the bootstrap data script.
+	// +optional
+	DataSecretName *string `json:"dataSecretName,omitempty"`
+
+	// BootstrapData will be a cloud-init script for now.
+	//
+	// Deprecated: This field has been deprecated in v1alpha3 and
+	// will be removed in a future version. Switch to DataSecretName.
+	//
+	// +optional
+	BootstrapData []byte `json:"bootstrapData,omitempty"`
+
+	// FailureReason will be set on non-retryable errors
+	// +optional
+	FailureReason string `json:"failureReason,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -61,4 +100,95 @@ type NodeConfigList struct {
 
 func init() {
 	SchemeBuilder.Register(&NodeConfig{}, &NodeConfigList{})
+}
+
+// Encoding specifies the cloud-init file encoding.
+// +kubebuilder:validation:Enum=base64;gzip;gzip+base64
+type Encoding string
+
+const (
+	// Base64 implies the contents of the file are encoded as base64.
+	Base64 Encoding = "base64"
+	// Gzip implies the contents of the file are encoded with gzip.
+	Gzip Encoding = "gzip"
+	// GzipBase64 implies the contents of the file are first base64 encoded and then gzip encoded.
+	GzipBase64 Encoding = "gzip+base64"
+)
+
+// File defines the input for generating write_files in cloud-init.
+type File struct {
+	// Path specifies the full path on disk where to store the file.
+	Path string `json:"path"`
+
+	// Owner specifies the ownership of the file, e.g. "root:root".
+	// +optional
+	Owner string `json:"owner,omitempty"`
+
+	// Permissions specifies the permissions to assign to the file, e.g. "0640".
+	// +optional
+	Permissions string `json:"permissions,omitempty"`
+
+	// Encoding specifies the encoding of the file contents.
+	// +optional
+	Encoding Encoding `json:"encoding,omitempty"`
+
+	// Content is the actual content of the file.
+	Content string `json:"content"`
+}
+
+// User defines the input for a generated user in cloud-init.
+type User struct {
+	// Name specifies the user name
+	Name string `json:"name"`
+
+	// Gecos specifies the gecos to use for the user
+	// +optional
+	Gecos *string `json:"gecos,omitempty"`
+
+	// Groups specifies the additional groups for the user
+	// +optional
+	Groups *string `json:"groups,omitempty"`
+
+	// HomeDir specifies the home directory to use for the user
+	// +optional
+	HomeDir *string `json:"homeDir,omitempty"`
+
+	// Inactive specifies whether to mark the user as inactive
+	// +optional
+	Inactive *bool `json:"inactive,omitempty"`
+
+	// Shell specifies the user's shell
+	// +optional
+	Shell *string `json:"shell,omitempty"`
+
+	// Passwd specifies a hashed password for the user
+	// +optional
+	Passwd *string `json:"passwd,omitempty"`
+
+	// PrimaryGroup specifies the primary group for the user
+	// +optional
+	PrimaryGroup *string `json:"primaryGroup,omitempty"`
+
+	// LockPassword specifies if password login should be disabled
+	// +optional
+	LockPassword *bool `json:"lockPassword,omitempty"`
+
+	// Sudo specifies a sudo role for the user
+	// +optional
+	Sudo *string `json:"sudo,omitempty"`
+
+	// SSHAuthorizedKeys specifies a list of ssh authorized keys for the user
+	// +optional
+	SSHAuthorizedKeys []string `json:"sshAuthorizedKeys,omitempty"`
+}
+
+// NTP defines input for generated ntp in cloud-init
+type NTP struct {
+	// Servers specifies which NTP servers to use
+	// +optional
+	Servers []string `json:"servers,omitempty"`
+
+	// Enabled specifies whether NTP should be enabled
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
 }
