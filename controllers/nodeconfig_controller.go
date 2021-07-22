@@ -34,6 +34,7 @@ import (
 
 	//ESLEE bsutil "sigs.k8s.io/cluster-api/bootstrap/util"
 	// "sigs.k8s.io/cluster-api/util/patch"
+	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 
 	bootstrapv1 "github.com/tmax-cloud/nodeconfig-operator/api/v1alpha1"
 )
@@ -58,9 +59,11 @@ func (r *NodeConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-//+kubebuilder:rbac:groups=cache.tmax.io,resources=nodeconfigs,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=cache.tmax.io,resources=nodeconfigs/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=cache.tmax.io,resources=nodeconfigs/finalizers,verbs=update
+//+kubebuilder:rbac:groups=bootstrap.tmax.io,resources=nodeconfigs,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=bootstrap.tmax.io,resources=nodeconfigs/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=bootstrap.tmax.io,resources=nodeconfigs/finalizers,verbs=update
+//+kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
+
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -72,8 +75,9 @@ func (r *NodeConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.8.3/pkg/reconcile
 func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	// _ = log.FromContext(ctx)
-	log := r.Log.WithValues("nodeconfig", req.NamespacedName)
+	// _ = ctrllog.FromContext(ctx)
+	// log := r.Log.WithValues("nodeconfig", req.NamespacedName)
+	log := ctrllog.FromContext(ctx)
 
 	// Lookup the node config
 	config := &bootstrapv1.NodeConfig{}
