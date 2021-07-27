@@ -157,6 +157,22 @@ spec:
                 description: DataSecretName is the name of the secret that stores
                   the bootstrap data script.
                 type: string
+              failureMessage:
+                description: "FailureMessage will be set in the event that there is
+                  a terminal problem reconciling the metal3machine and will contain
+                  a more verbose string suitable for logging and human consumption.
+                  \n This field should not be set for transitive errors that a controller
+                  faces that are expected to be fixed automatically over time (like
+                  service outages), but instead indicate that something is fundamentally
+                  wrong with the metal3machine's spec or the configuration of the
+                  controller, and that manual intervention is required. Examples of
+                  terminal errors would be invalid combinations of settings in the
+                  spec, values that are unsupported by the controller, or the responsible
+                  controller itself being critically misconfigured. \n Any transient
+                  errors that occur during the reconciliation of metal3machines can
+                  be added as events to the metal3machine object and/or logged in
+                  the controller's output."
+                type: string
               failureReason:
                 description: FailureReason will be set on non-retryable errors
                 type: string
