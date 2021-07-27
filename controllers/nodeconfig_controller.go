@@ -23,7 +23,10 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
+	nco "github.com/tmax-cloud/nodeconfig-operator/api/v1alpha1"
 	"github.com/tmax-cloud/nodeconfig-operator/cloudinit"
+	"github.com/tmax-cloud/nodeconfig-operator/util"
+
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -41,9 +44,10 @@ import (
 
 // NodeConfigReconciler reconciles a NodeConfig object
 type NodeConfigReconciler struct {
-	Client client.Client
-	Log    logr.Logger
-	Scheme *runtime.Scheme
+	Client        client.Client
+	ConfigManager util.ConfigManager
+	Log           logr.Logger
+	Scheme        *runtime.Scheme
 }
 
 type Scope struct {
@@ -114,6 +118,28 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// if err != nil {
 	// 	return ctrl.Result{}, err
 	// }
+
+	// Fetch the NodeConfig instance.
+	nConfig := &nco.NodeConfig{}
+
+	// Create a helper for managing the baremetal container hosting the machine.
+	configMgr, err := r.ConfigManager.NewConfigManager(r.Client, nConfig, log)
+	if err != nil {
+		return ctrl.Result{}, errors.Wrapf(err, "failed to create helper for managing the configMgr")
+	}
+	//ESLEE: add error handling with configMgr=nil
+
+	// Check if the metal3machine was associated with a baremetalhost
+	if !configMgr.HasAnnotation() {
+		//Associate the baremetalhost hosting the machine
+		err := configMgr.Associate(ctx)
+		if err != nil {
+			// return checkMachineError(configMgr, err,
+			// 	"failed to associate the Metal3Machine to a BaremetalHost", errType,
+			// )
+			return ctrl.Result{}, errors.Wrapf(err, "failed to associate the Metal3Machine to a BaremetalHost")
+		}
+	}
 
 	switch {
 	// Migrate plaintext data to secret.
