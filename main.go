@@ -20,6 +20,7 @@ import (
 	"flag"
 	"os"
 
+	bmoapis "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -45,6 +46,7 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(bootstrapv1alpha1.AddToScheme(scheme))
+	_ = bmoapis.AddToScheme(scheme)
 	//+kubebuilder:scaffold:scheme
 }
 
