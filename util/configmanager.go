@@ -24,9 +24,11 @@ import (
 	nco "github.com/tmax-cloud/nodeconfig-operator/api/v1alpha1"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/utils/pointer"
 
+	"sigs.k8s.io/cluster-api/util"
+	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -58,7 +60,8 @@ func (c *ConfigManager) NewConfigManager(client client.Client,
 	}, nil
 }
 
-// Associate associates a machine and is invoked by the Config Controller
+// Associate associates the nodeconfig with the baremetal machine
+// It's invoked by the Config Controller
 func (c *ConfigManager) Associate(ctx context.Context) error {
 	c.Log.Info("Associating nodeconfig", "nodeconfig", c.NodeConfig.Name)
 
@@ -67,6 +70,16 @@ func (c *ConfigManager) Associate(ctx context.Context) error {
 		// Should have been picked earlier. Do not requeue
 		return nil
 	}
+	// clear an error if one was previously set
+	c.clearError()
+
+	// c.Log.Info("ESLEE_TMP: Before eunsureAnnotation")
+	// err := c.EnsureAnnotation(ctx)
+	// if err != nil {
+	// 	c.SetError("Failed to annotate the NodeConfig")
+	// 	// c.Log.Error(nil, "ESLEE_TMP: Failed to annotate the NodeConfig")
+	// 	return err
+	// }
 
 	// ESLEE_TODO: nodeconifg에서 OS IMG 설정하게 해줄것인가
 	// config := c.NodeConfig.Spec
@@ -77,17 +90,32 @@ func (c *ConfigManager) Associate(ctx context.Context) error {
 	// 	return nil
 	// }
 
-	// clear an error if one was previously set
-	c.clearError()
-
 	// look for associated BMH
-	host, err := c.getHost(ctx, c.client, c.Log)
+	// defer func() {
+	bmhost, bmhHelper, err := c.getHost(ctx)
 	if err != nil {
-		c.SetError("Failed to get the BaremetalHost for the Metal3Machine") //,
-		// 	capierrors.CreateMachineError,
-		// )
+		// if host != nil {
+		// 	c.Log.Error(err, "Host not nil", "host", host) //,
+		// } else {
+		// 	c.Log.Error(err, "Host nil") //,
+		// }
+
+		c.SetError("Failed to get the BaremetalHost for the NodeConfig")
 		return err
 	}
+	c.Log.Info("ESLEE: Get host success!", "part", bmhost.Status)
+	if err = c.setHostSpec(ctx, bmhost); err != nil {
+		c.SetError(err.Error())
+	}
+
+	c.NodeConfig.ObjectMeta.SetOwnerReferences(
+		util.EnsureOwnerRef(c.NodeConfig.GetOwnerReferences(),
+			metav1.OwnerReference{
+				APIVersion: bmhost.APIVersion,
+				Kind:       "BareMetalHost",
+				Name:       bmhost.Name,
+				UID:        bmhost.UID,
+			}))
 
 	// ESLEE_TODO: nodeconfig에서 임의로 BMH 고르게 하는 기능을 줄것인가?
 	// // no BMH found, trying to choose from available ones
@@ -137,14 +165,14 @@ func (c *ConfigManager) Associate(ctx context.Context) error {
 	// 	}
 	// 	return err
 	// }
-
-	err = c.ensureAnnotation(ctx, host)
+	err = bmhHelper.Patch(ctx, bmhost)
 	if err != nil {
-		c.SetError("Failed to annotate the NodeConfig")
-		// if _, ok := err.(HasRequeueAfterError); !ok {
-		// 	m.SetError("Failed to annotate the Metal3Machine",
-		// 		capierrors.CreateMachineError,
-		// 	)
+		// if aggr, ok := err.(kerrors.Aggregate); ok {
+		// 	for _, kerr := range aggr.Errors() {
+		// 		if apierrors.IsConflict(kerr) {
+		// 			return &RequeueAfterError{}
+		// 		}
+		// 	}
 		// }
 		return err
 	}
@@ -154,46 +182,50 @@ func (c *ConfigManager) Associate(ctx context.Context) error {
 }
 
 // GetBaremetalHostID return the provider identifier for this machine
-func (c *ConfigManager) GetBaremetalHostID(ctx context.Context) (*string, error) {
-	// look for associated BMH
-	host, err := c.getHost(ctx, c.client, c.Log)
-	if err != nil {
-		c.SetError("Failed to get a BaremetalHost for the NodeConfig")
-		return nil, err
-	}
-	if host == nil {
-		c.Log.Info("BaremetalHost not associated, requeuing")
-		// 	return nil, &RequeueAfterError{RequeueAfter: requeueAfter}
-		return nil, err
-	}
-	if host.Status.Provisioning.State == bmh.StateProvisioned {
-		return pointer.StringPtr(string(host.ObjectMeta.UID)), nil
-	}
-	c.Log.Info("Provisioning BaremetalHost, requeuing")
-	// return nil, &RequeueAfterError{RequeueAfter: requeueAfter}
-	return nil, nil
-}
+// func (c *ConfigManager) GetBaremetalHostID(ctx context.Context) (*string, error) {
+// 	// look for associated BMH
+// 	host, err := c.getHost(ctx, c.client, c.Log)
+// 	if err != nil {
+// 		c.SetError("Failed to get a BaremetalHost for the NodeConfig")
+// 		return nil, err
+// 	}
+// 	if host == nil {
+// 		c.Log.Info("BaremetalHost not associated, requeuing")
+// 		// 	return nil, &RequeueAfterError{RequeueAfter: requeueAfter}
+// 		return nil, err
+// 	}
+// 	if host.Status.Provisioning.State == bmh.StateProvisioned {
+// 		return pointer.StringPtr(string(host.ObjectMeta.UID)), nil
+// 	}
+// 	c.Log.Info("Provisioning BaremetalHost, requeuing")
+// 	// return nil, &RequeueAfterError{RequeueAfter: requeueAfter}
+// 	return nil, nil
+// }
 
 // getHost gets the associated host by looking for an annotation on the machine
 // that contains a reference to the host. Returns nil if not found. Assumes the
 // host is in the same namespace as the machine.
+func (c *ConfigManager) getHost(ctx context.Context) (*bmh.BareMetalHost, *patch.Helper, error) {
+	host, err := getHost(ctx, c.NodeConfig, c.client, c.Log)
+	if err != nil || host == nil {
+		return host, nil, err
+	}
+	helper, err := patch.NewHelper(host, c.client)
+	return host, helper, err
+}
 
-// func getHost(ctx context.Context) (*bmh.BareMetalHost, error) {
-// 	host, err := getHost(ctx, m.Metal3Machine, m.client, m.Log)
-// 	if err != nil || host == nil {
-// 		return host, err
-// 	}
-// 	helper, err := patch.NewHelper(host, m.client)
-// 	return host, helper, err
-// }
-
-func (c *ConfigManager) getHost(ctx context.Context, cl client.Client, mLog logr.Logger) (*bmh.BareMetalHost, error) {
-	annotations := c.NodeConfig.ObjectMeta.GetAnnotations()
+// func getHost(ctx context.Context, cl client.Client, mLog logr.Logger) (*bmh.BareMetalHost, error) {
+func getHost(ctx context.Context, nConfig *nco.NodeConfig,
+	cl client.Client, mLog logr.Logger) (*bmh.BareMetalHost, error) {
+	mLog.Info("ESLEE: Start to find host")
+	annotations := nConfig.ObjectMeta.GetAnnotations()
 	if annotations == nil {
+		mLog.Info("ESLEE: no annotation")
 		return nil, nil
 	}
 	hostKey, ok := annotations[HostAnnotation]
 	if !ok {
+		mLog.Info("ESLEE: no metal3/baremetalhost annotation")
 		return nil, nil
 	}
 	hostNamespace, hostName, err := cache.SplitMetaNamespaceKey(hostKey)
@@ -202,33 +234,85 @@ func (c *ConfigManager) getHost(ctx context.Context, cl client.Client, mLog logr
 		return nil, err
 	}
 
+	// mLog.Info("ESLEE_TMP: Where's my BMH")
 	host := bmh.BareMetalHost{}
 	key := client.ObjectKey{
 		Name:      hostName,
 		Namespace: hostNamespace,
 	}
+	// mLog.Info("ESLEE_TMP: hello#1", "host", host, "key", key)
 	err = cl.Get(ctx, key, &host)
+	// mLog.Info("ESLEE_TMP: hello#2", "host after get", host)
+	// mLog.Info("ESLEE_TMP: hello#3", "host namespace", hostNamespace)
 	if apierrors.IsNotFound(err) {
 		mLog.Info("Annotated host not found", "host", hostKey)
 		return nil, nil
 	} else if err != nil {
 		return nil, err
 	}
-	return &host, nil
+	mLog.Info("ESLEE_TMP: Found host", "host", hostKey)
+	return &host, err
 }
 
-// ensureAnnotation makes sure the machine has an annotation that references the
-// host and uses the API to update the machine if necessary.
-func (c *ConfigManager) ensureAnnotation(ctx context.Context, host *bmh.BareMetalHost) error {
-	annotations := c.NodeConfig.ObjectMeta.GetAnnotations()
-	if annotations == nil {
-		annotations = make(map[string]string)
+// setHostSpec will ensure the host's Spec is set according to the machine's
+// details. It will then update the host via the kube API. If UserData does not
+// include a Namespace, it will default to the Metal3Machine's namespace.
+func (c *ConfigManager) setHostSpec(ctx context.Context, host *bmh.BareMetalHost) error {
+
+	// We only want to update the image setting if the host does not
+	// already have an image.
+	//
+	// A host with an existing image is already provisioned and
+	// upgrades are not supported at this time. To re-provision a
+	// host, we must fully deprovision it and then provision it again.
+	// Not provisioning while we do not have the UserData
+	if c.NodeConfig.Status.UserData != nil {
+		// if host.Spec.Image == nil && m.Metal3Machine.Status.UserData != nil {
+		// checksumType := ""
+		// if m.Metal3Machine.Spec.Image.ChecksumType != nil {
+		// 	checksumType = *m.Metal3Machine.Spec.Image.ChecksumType
+		// }
+		// host.Spec.Image = &bmh.Image{
+		// 	URL:          m.Metal3Machine.Spec.Image.URL,
+		// 	Checksum:     m.Metal3Machine.Spec.Image.Checksum,
+		// 	ChecksumType: bmh.ChecksumType(checksumType),
+		// 	DiskFormat:   m.Metal3Machine.Spec.Image.DiskFormat,
+		// }
+		host.Spec.UserData = c.NodeConfig.Status.UserData
+		if host.Spec.UserData != nil && host.Spec.UserData.Namespace == "" {
+			host.Spec.UserData.Namespace = host.Namespace
+		}
+		// c.Log.Info("ESLEE_TMP: set BMH", "userdata", host.Spec.UserData)
+
+		// Set metadata from gathering from Spec.metadata and from the template.
+		// if m.Metal3Machine.Status.MetaData != nil {
+		// 	host.Spec.MetaData = m.Metal3Machine.Status.MetaData
+		// }
+		// if host.Spec.MetaData != nil && host.Spec.MetaData.Namespace == "" {
+		// 	host.Spec.MetaData.Namespace = m.Machine.Namespace
+		// }
+		// if m.Metal3Machine.Status.NetworkData != nil {
+		// 	host.Spec.NetworkData = m.Metal3Machine.Status.NetworkData
+		// }
+		// if host.Spec.NetworkData != nil && host.Spec.NetworkData.Namespace == "" {
+		// 	host.Spec.NetworkData.Namespace = m.Machine.Namespace
+		// }
 	}
-	hostKey, err := cache.MetaNamespaceKeyFunc(host)
-	if err != nil {
-		c.Log.Error(err, "Error parsing annotation value", "annotation key", hostKey)
-		return err
-	}
+	// Set automatedCleaningMode from metal3Machine.spec.automatedCleaningMode.
+	// if host.Spec.AutomatedCleaningMode != bmh.AutomatedCleaningMode(m.Metal3Machine.Spec.AutomatedCleaningMode) {
+	// 	host.Spec.AutomatedCleaningMode = bmh.AutomatedCleaningMode(m.Metal3Machine.Spec.AutomatedCleaningMode)
+	// }
+
+	host.Spec.Online = true
+
+	return nil
+}
+
+// ensureAnnotation makes sure the config has an annotation that references the
+// host and uses the API to update the config if necessary.
+func (c *ConfigManager) EnsureAnnotation(ctx context.Context) error { //, host *bmh.BareMetalHost) error {
+	hostKey := c.NodeConfig.ObjectMeta.GetNamespace() + "/" + c.NodeConfig.ObjectMeta.GetName() //	GetAnnotations()
+	annotations := make(map[string]string)
 	existing, ok := annotations[HostAnnotation]
 	if ok {
 		if existing == hostKey {
@@ -239,6 +323,7 @@ func (c *ConfigManager) ensureAnnotation(ctx context.Context, host *bmh.BareMeta
 	annotations[HostAnnotation] = hostKey
 	c.NodeConfig.ObjectMeta.SetAnnotations(annotations)
 
+	// c.Log.Info("ESLEE_TMP: set annotation", "key", hostKey, "val", annotations)
 	return nil
 }
 

@@ -124,3 +124,38 @@ func Get(ctx context.Context, c client.Client, ref *corev1.ObjectReference, name
 	}
 	return obj, nil
 }
+
+// EnsureOwnerRef makes sure the slice contains the OwnerReference.
+func EnsureOwnerRef(ownerReferences []metav1.OwnerReference, ref metav1.OwnerReference) []metav1.OwnerReference {
+	idx := indexOwnerRef(ownerReferences, ref)
+	if idx == -1 {
+		return append(ownerReferences, ref)
+	}
+	ownerReferences[idx] = ref
+	return ownerReferences
+}
+
+// indexOwnerRef returns the index of the owner reference in the slice if found, or -1.
+func indexOwnerRef(ownerReferences []metav1.OwnerReference, ref metav1.OwnerReference) int {
+	for index, r := range ownerReferences {
+		if referSameObject(r, ref) {
+			return index
+		}
+	}
+	return -1
+}
+
+// Returns true if a and b point to the same object.
+func referSameObject(a, b metav1.OwnerReference) bool {
+	aGV, err := schema.ParseGroupVersion(a.APIVersion)
+	if err != nil {
+		return false
+	}
+
+	bGV, err := schema.ParseGroupVersion(b.APIVersion)
+	if err != nil {
+		return false
+	}
+
+	return aGV.Group == bGV.Group && a.Kind == b.Kind && a.Name == b.Name
+}

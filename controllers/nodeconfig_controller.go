@@ -23,7 +23,6 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
-	nco "github.com/tmax-cloud/nodeconfig-operator/api/v1alpha1"
 	"github.com/tmax-cloud/nodeconfig-operator/cloudinit"
 	"github.com/tmax-cloud/nodeconfig-operator/util"
 
@@ -32,11 +31,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/pointer"
+	"sigs.k8s.io/cluster-api/util/patch"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	//ESLEE bsutil "sigs.k8s.io/cluster-api/bootstrap/util"
-	// "sigs.k8s.io/cluster-api/util/patch"
+
 	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 
 	bootstrapv1 "github.com/tmax-cloud/nodeconfig-operator/api/v1alpha1"
@@ -64,9 +64,13 @@ func (r *NodeConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 //+kubebuilder:rbac:groups=bootstrap.tmax.io,resources=nodeconfigs,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=bootstrap.tmax.io,resources=nodeconfigs/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=bootstrap.tmax.io,resources=nodeconfigs/status,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=bootstrap.tmax.io,resources=nodeconfigs/finalizers,verbs=update
-//+kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups="",resources=secrets;events;configmaps,verbs=get;list;watch;create;update;patch;delete
+
+// Add RBAC rules to access cluster-api resources
+//+kubebuilder:rbac:groups=metal3.io,resources=baremetalhosts,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=metal3.io,resources=baremetalhosts/status,verbs=get;update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -78,11 +82,10 @@ func (r *NodeConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.8.3/pkg/reconcile
 func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	// _ = ctrllog.FromContext(ctx)
-	// log := r.Log.WithValues("nodeconfig", req.NamespacedName)
 	log := ctrllog.FromContext(ctx)
+	log.Info("Start nodeconfig operator reconcile")
 
-	// Lookup the node config
+	// Fetch the NodeConfig instance.
 	config := &bootstrapv1.NodeConfig{}
 	if err := r.Client.Get(ctx, req.NamespacedName, config); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -92,38 +95,27 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 
-	//ESLEE // Look up the owner of this NodeConfig if there is one
-	// configOwner, err := bsutil.GetConfigOwner(ctx, r.Client, config)
-	// if apierrors.IsNotFound(err) {
-	// 	// Could not find the owner yet, this is not an error and will rereconcile when the owner gets set.
-	// 	return ctrl.Result{}, nil
-	// }
-	// if err != nil {
-	// 	log.Error(err, "failed to get owner")
-	// 	return ctrl.Result{}, err
-	// }
-	// if configOwner == nil {
-	// 	return ctrl.Result{}, nil
-	// }
-	// log = log.WithValues("kind", configOwner.GetKind(), "version", configOwner.GetResourceVersion(), "name", configOwner.GetName())
-
 	scope := &Scope{
 		Logger: log,
 		Config: config,
 		//ESLEE ConfigOwner: configOwner,
 	}
 
-	//ESLEE // Initialize the patch helper.
-	// patchHelper, err := patch.NewHelper(config, r.Client)
-	// if err != nil {
-	// 	return ctrl.Result{}, err
-	// }
-
-	// Fetch the NodeConfig instance.
-	nConfig := &nco.NodeConfig{}
+	// Initialize the patch helper.
+	patchHelper, err := patch.NewHelper(config, r.Client)
+	if err != nil {
+		return ctrl.Result{}, errors.Wrap(err, "failed to init patch helper")
+	}
+	// Always patch nodeconfig exiting this function so we can persist any nodeconfig changes.
+	defer func() {
+		err := patchHelper.Patch(ctx, config)
+		if err != nil {
+			log.Info("failed to Patch nodeconfig")
+		}
+	}()
 
 	// Create a helper for managing the baremetal container hosting the machine.
-	configMgr, err := r.ConfigManager.NewConfigManager(r.Client, nConfig, log)
+	configMgr, err := r.ConfigManager.NewConfigManager(r.Client, config, log)
 	if err != nil {
 		return ctrl.Result{}, errors.Wrapf(err, "failed to create helper for managing the configMgr")
 	}
@@ -131,44 +123,62 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	// Check if the metal3machine was associated with a baremetalhost
 	if !configMgr.HasAnnotation() {
-		//Associate the baremetalhost hosting the machine
-		err := configMgr.Associate(ctx)
+		err := configMgr.EnsureAnnotation(ctx)
 		if err != nil {
-			// return checkMachineError(configMgr, err,
-			// 	"failed to associate the Metal3Machine to a BaremetalHost", errType,
-			// )
-			return ctrl.Result{}, errors.Wrapf(err, "failed to associate the Metal3Machine to a BaremetalHost")
-		}
-	}
-
-	switch {
-	// Migrate plaintext data to secret.
-	case config.Status.BootstrapData != nil: // && config.Status.DataSecretName == nil:
-		if err := r.storeBootstrapData(ctx, scope, config.Status.BootstrapData); err != nil {
+			configMgr.SetError("Failed to annotate the NodeConfig")
+			// c.Log.Error(nil, "ESLEE_TMP: Failed to annotate the NodeConfig")
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{}, nil
-		//ESLEE return ctrl.Result{}, patchHelper.Patch(ctx, config)
-		// Reconcile status for machines that already have a secret reference, but our status isn't up to date.
-		// This case solves the pivoting scenario (or a backup restore) which doesn't preserve the status subresource on objects.
-		//ESLEE case configOwner.DataSecretName() != nil && (!config.Status.Ready || config.Status.DataSecretName == nil):
-		// 	config.Status.Ready = true
-		// 	config.Status.DataSecretName = configOwner.DataSecretName()
-		// 	return ctrl.Result{}, patchHelper.Patch(ctx, config)
+		log.Info("ESLEE_TMP: Ends up checking annotation")
 	}
 
-	// It's a Node join
-	return r.joinNode(ctx, scope)
-	// return ctrl.Result{}, err
+	// switch {
+	// // Migrate plaintext data to secret.
+	// case config.Status.BootstrapData != nil && config.Status.DataSecretName == nil:
+	// 	if err := r.storeBootstrapData(ctx, scope, config.Status.BootstrapData); err != nil {
+	// 		return ctrl.Result{}, err
+	// 	}
+	// 	return ctrl.Result{}, patchHelper.Patch(ctx, config)
+	// 	//ESLEE return ctrl.Result{}, patchHelper.Patch(ctx, config)
+	// 	// Reconcile status for machines that already have a secret reference, but our status isn't up to date.
+	// 	// This case solves the pivoting scenario (or a backup restore) which doesn't preserve the status subresource on objects.
+	// 	//ESLEE case configOwner.DataSecretName() != nil && (!config.Status.Ready || config.Status.DataSecretName == nil):
+	// 	// 	config.Status.Ready = true
+	// 	// 	config.Status.DataSecretName = configOwner.DataSecretName()
+	// 	// 	return ctrl.Result{}, patchHelper.Patch(ctx, config)
+	// case config.Status.BootstrapData != nil && config.Status.DataSecretName != nil:
+	// 	return ctrl.Result{}, patchHelper.Patch(ctx, config)
+	// }
+
+	if !config.Status.Ready {
+		// log.Info("ESLEE_TMP: the userData secret already created")
+		// log.Info("ESLEE_TMP: before joinNode call", "already userdata", config.Status.UserData, "ready?", config.Status.Ready)
+		if err := r.joinNode(ctx, scope); err != nil {
+			log.Info("ESLEE: joinNode failed!", "err_mgs", err.Error())
+			return ctrl.Result{}, err
+		}
+		if err := patchHelper.Patch(ctx, config); err != nil {
+			log.Info("failed to Patch nodeconfig")
+			return ctrl.Result{}, err
+		}
+	}
+
+	//Associate the baremetalhost hosting the machine
+	if config.ObjectMeta.OwnerReferences != nil {
+		// log.Info("ESLEE_TMP: already associated", "ownerRef", config.ObjectMeta.OwnerReferences)
+		return ctrl.Result{}, nil
+	}
+	err = configMgr.Associate(ctx)
+	if err != nil {
+		return ctrl.Result{}, errors.Wrapf(err, "failed to associate the NodeConfig to a BaremetalHost")
+	}
+
+	log.Info("ESLEE: End reconcile")
+	return ctrl.Result{}, nil
 }
 
-func (r *NodeConfigReconciler) joinNode(ctx context.Context, scope *Scope) (_ ctrl.Result, reterr error) {
+func (r *NodeConfigReconciler) joinNode(ctx context.Context, scope *Scope) error { // (_ ctrl.Result, reterr error) {
 	scope.Info("Creating BootstrapData for the node")
-
-	//ESLEE verbosityFlag := ""
-	// if scope.Config.Spec.Verbosity != nil {
-	// 	verbosityFlag = fmt.Sprintf("--v %s", strconv.Itoa(int(*scope.Config.Spec.Verbosity)))
-	// }
 
 	cloudInitData, err := cloudinit.NewNode(&cloudinit.NodeInput{
 		BaseUserData: cloudinit.BaseUserData{
@@ -176,24 +186,24 @@ func (r *NodeConfigReconciler) joinNode(ctx context.Context, scope *Scope) (_ ct
 			NTP:               scope.Config.Spec.NTP,
 			CloudInitCommands: scope.Config.Spec.CloudInitCommands,
 			Users:             scope.Config.Spec.Users,
-			//ESLEE KubeadmVerbosity:  verbosityFlag,
 		},
 	})
 	if err != nil {
 		scope.Error(err, "failed to create node configuration")
-		return ctrl.Result{}, err
+		return err
 	}
 
 	if err := r.storeBootstrapData(ctx, scope, cloudInitData); err != nil {
 		scope.Error(err, "failed to store bootstrap data")
-		return ctrl.Result{}, err
+		return err
 	}
-	return ctrl.Result{}, nil
+	return nil
 }
 
 // storeBootstrapData creates a new secret with the data passed in as input,
 // sets the reference in the configuration status and ready to true.
 func (r *NodeConfigReconciler) storeBootstrapData(ctx context.Context, scope *Scope, data []byte) error {
+	scope.Info("Store the Bootstrap data", "ready", scope.Config.Status.Ready, "secret", scope.Config.Status.DataSecretName)
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      scope.Config.Name,
@@ -214,10 +224,16 @@ func (r *NodeConfigReconciler) storeBootstrapData(ctx context.Context, scope *Sc
 	}
 
 	if err := r.Client.Create(ctx, secret); err != nil {
-		return errors.Wrapf(err, "failed to create bootstrap data secret for KubeadmConfig %s/%s", scope.Config.Namespace, scope.Config.Name)
+		return errors.Wrapf(err, "failed to create bootstrap data secret for NodeConfig %s/%s", scope.Config.Namespace, scope.Config.Name)
 	}
 
-	scope.Config.Status.DataSecretName = pointer.StringPtr(secret.Name)
+	// ESLEE: Deprecated datasecretname
+	// scope.Config.Status.DataSecretName = pointer.StringPtr(secret.Name)
 	scope.Config.Status.Ready = true
+	scope.Config.Status.UserData = &corev1.SecretReference{
+		Name:      secret.Name,
+		Namespace: secret.Namespace,
+	}
+	// scope.Info("ESLEE_TMP: Store the Bootstrap data - success!", "status.secret", scope.Config.Status.DataSecretName, "status.ready", scope.Config.Status.Ready)
 	return nil
 }
