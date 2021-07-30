@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -64,13 +65,18 @@ type NodeConfigStatus struct {
 	// +optional
 	DataSecretName *string `json:"dataSecretName,omitempty"`
 
+	// UserData references the Secret that holds user data needed by the bare metal
+	// operator. The Namespace is optional; it will default to the metal3machine's
+	// namespace if not specified.
+	UserData *corev1.SecretReference `json:"userData,omitempty"`
+
 	// BootstrapData will be a cloud-init script for now.
 	//
 	// Deprecated: This field has been deprecated in v1alpha3 and
 	// will be removed in a future version. Switch to DataSecretName.
 	//
 	// +optional
-	BootstrapData []byte `json:"bootstrapData,omitempty"`
+	// BootstrapData []byte `json:"bootstrapData,omitempty"`
 
 	// FailureReason will be set on non-retryable errors
 	// +optional

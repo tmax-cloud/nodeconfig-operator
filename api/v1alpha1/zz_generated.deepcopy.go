@@ -21,6 +21,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"k8s.io/api/core/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -168,10 +169,10 @@ func (in *NodeConfigStatus) DeepCopyInto(out *NodeConfigStatus) {
 		*out = new(string)
 		**out = **in
 	}
-	if in.BootstrapData != nil {
-		in, out := &in.BootstrapData, &out.BootstrapData
-		*out = make([]byte, len(*in))
-		copy(*out, *in)
+	if in.UserData != nil {
+		in, out := &in.UserData, &out.UserData
+		*out = new(v1.SecretReference)
+		**out = **in
 	}
 	if in.FailureMessage != nil {
 		in, out := &in.FailureMessage, &out.FailureMessage
