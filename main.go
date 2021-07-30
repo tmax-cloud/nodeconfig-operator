@@ -46,7 +46,7 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(bootstrapv1alpha1.AddToScheme(scheme))
-	_ = bmoapis.AddToScheme(scheme)
+	utilruntime.Must(bmoapis.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
