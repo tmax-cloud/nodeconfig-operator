@@ -35,6 +35,12 @@ const (
 
 // NodeConfigSpec defines the desired state of NodeConfig
 type NodeConfigSpec struct {
+	// BMC specifies the BMC configuration
+	BMC *BMC `json:"bmc"`
+
+	// Image holds the details of the image to be provisioned.
+	Image *Image `json:"image"`
+
 	// Files specifies extra files to be passed to user_data upon creation.
 	// +optional
 	Files []File `json:"files,omitempty"`
@@ -53,7 +59,8 @@ type NodeConfigSpec struct {
 
 	// Format specifies the output format of the bootstrap data
 	// +optional
-	Format Format `json:"format,omitempty"`
+	// Format Format `json:"format,omitempty"`
+
 }
 
 // NodeConfigStatus defines the observed state of NodeConfig
@@ -139,6 +146,97 @@ const (
 	// GzipBase64 implies the contents of the file are first base64 encoded and then gzip encoded.
 	GzipBase64 Encoding = "gzip+base64"
 )
+
+// BootMode is the boot mode of the system
+// +kubebuilder:validation:Enum=UEFI;legacy
+type BootMode string
+
+// Allowed boot mode from metal3
+const (
+	UEFI            BootMode = "UEFI"
+	Legacy          BootMode = "legacy"
+	DefaultBootMode BootMode = UEFI
+)
+
+// BootMode returns the boot method to use for the host.
+func (nc *NodeConfig) BootMode() BootMode {
+	mode := nc.Spec.BMC.BootMode
+	if mode == "" {
+		return DefaultBootMode
+	}
+	return mode
+}
+
+// BMC contains the information necessary to communicate with
+// the baremetal host
+type BMC struct {
+	// Address holds the URL for accessing the controller on the network.
+	Address string `json:"address"`
+
+	// Which MAC address will PXE boot? This is optional for some
+	// types, but required for libvirt VMs driven by vbmc.
+	// +kubebuilder:validation:Pattern=`[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){5}`
+	// +optional
+	BootMACAddress string `json:"bootMACAddress,omitempty"`
+
+	// Select the method of initializing the hardware during
+	// boot. Defaults to UEFI.
+	// +optional
+	BootMode BootMode `json:"bootMode,omitempty"`
+
+	// ID/PW for authenticating with the BMC
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// ChecksumType holds the algorithm name for the checksum
+// +kubebuilder:validation:Enum=md5;sha256;sha512
+type ChecksumType string
+
+const (
+	// MD5 checksum type
+	MD5 ChecksumType = "md5"
+	// SHA256 checksum type
+	SHA256 ChecksumType = "sha256"
+	// SHA512 checksum type
+	SHA512 ChecksumType = "sha512"
+
+	DefaultChecksumType ChecksumType = MD5
+)
+
+// ChecksumType returns the checksum method to use for image validation.
+func (nc *NodeConfig) ChecksumType() ChecksumType {
+	checksum_type := nc.Spec.Image.ChecksumType
+	if checksum_type == "" {
+		return DefaultChecksumType
+	}
+	return checksum_type
+}
+
+// Image holds the details of an image either to provisioned or that
+// has been provisioned.
+type Image struct {
+	// URL is a location of an image to deploy.
+	URL string `json:"url"`
+
+	// Checksum is the checksum for the image.
+	Checksum string `json:"checksum"`
+
+	// ChecksumType is the checksum algorithm for the image.
+	// e.g md5, sha256, sha512
+	ChecksumType ChecksumType `json:"checksumType,omitempty"`
+}
+
+func (nc *NodeConfig) checkBMHDetails() bool {
+	if nc.Spec.BMC.Address != "" &&
+		nc.Spec.BMC.Username != "" &&
+		nc.Spec.BMC.Password != "" &&
+		nc.Spec.Image.URL != "" &&
+		nc.Spec.Image.Checksum != "" {
+		return true
+	}
+	return false
+}
 
 // File defines the input for generating write_files in cloud-init.
 type File struct {
