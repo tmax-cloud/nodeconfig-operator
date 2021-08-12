@@ -316,6 +316,7 @@ func (c *ConfigManager) setHostSpec(ctx context.Context, host *bmh.BareMetalHost
 	// if host.Spec.AutomatedCleaningMode != bmh.AutomatedCleaningMode(m.Metal3Machine.Spec.AutomatedCleaningMode) {
 	// 	host.Spec.AutomatedCleaningMode = bmh.AutomatedCleaningMode(m.Metal3Machine.Spec.AutomatedCleaningMode)
 	// }
+	c.Log.Info("ESLEE_tmp: provisioning state", "bmh-state", host.Status.Provisioning.State)
 	if host.Status.Provisioning.State == "ready" {
 		host.Spec.Online = true
 	}
