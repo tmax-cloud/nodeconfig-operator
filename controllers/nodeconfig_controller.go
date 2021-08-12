@@ -98,7 +98,6 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	scope := &Scope{
 		Logger: log,
 		Config: config,
-		//ESLEE ConfigOwner: configOwner,
 	}
 
 	// Initialize the patch helper.
@@ -119,9 +118,8 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if err != nil {
 		return ctrl.Result{}, errors.Wrapf(err, "failed to create helper for managing the configMgr")
 	}
-	//ESLEE: add error handling with configMgr=nil
 
-	// Check if the metal3machine was associated with a baremetalhost
+	// Check if the nodeconfig was associated with a baremetalhost
 	if !configMgr.HasAnnotation() {
 		err := configMgr.EnsureAnnotation(ctx)
 		if err != nil {
@@ -132,29 +130,11 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		log.Info("ESLEE_TMP: Ends up checking annotation")
 	}
 
-	// switch {
-	// // Migrate plaintext data to secret.
-	// case config.Status.BootstrapData != nil && config.Status.DataSecretName == nil:
-	// 	if err := r.storeBootstrapData(ctx, scope, config.Status.BootstrapData); err != nil {
-	// 		return ctrl.Result{}, err
-	// 	}
-	// 	return ctrl.Result{}, patchHelper.Patch(ctx, config)
-	// 	//ESLEE return ctrl.Result{}, patchHelper.Patch(ctx, config)
-	// 	// Reconcile status for machines that already have a secret reference, but our status isn't up to date.
-	// 	// This case solves the pivoting scenario (or a backup restore) which doesn't preserve the status subresource on objects.
-	// 	//ESLEE case configOwner.DataSecretName() != nil && (!config.Status.Ready || config.Status.DataSecretName == nil):
-	// 	// 	config.Status.Ready = true
-	// 	// 	config.Status.DataSecretName = configOwner.DataSecretName()
-	// 	// 	return ctrl.Result{}, patchHelper.Patch(ctx, config)
-	// case config.Status.BootstrapData != nil && config.Status.DataSecretName != nil:
-	// 	return ctrl.Result{}, patchHelper.Patch(ctx, config)
-	// }
-
 	if !config.Status.Ready {
 		// log.Info("ESLEE_TMP: the userData secret already created")
-		// log.Info("ESLEE_TMP: before joinNode call", "already userdata", config.Status.UserData, "ready?", config.Status.Ready)
-		if err := r.joinNode(ctx, scope); err != nil {
-			log.Info("ESLEE: joinNode failed!", "err_mgs", err.Error())
+		// log.Info("ESLEE_TMP: before createNodeConfig call", "already userdata", config.Status.UserData, "ready?", config.Status.Ready)
+		if err := r.createNodeConfig(ctx, scope); err != nil {
+			log.Info("ESLEE: createNodeConfig failed!", "err_mgs", err.Error())
 			return ctrl.Result{}, err
 		}
 		if err := patchHelper.Patch(ctx, config); err != nil {
@@ -163,11 +143,23 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 	}
 
-	//Associate the baremetalhost hosting the machine
+	// Skip the association
 	if config.ObjectMeta.OwnerReferences != nil {
 		// log.Info("ESLEE_TMP: already associated", "ownerRef", config.ObjectMeta.OwnerReferences)
 		return ctrl.Result{}, nil
 	}
+
+	// Create the BareMetalHost CR
+	if !configMgr.FindHost(ctx) {
+
+		// ESLEE: todo (not done)
+		if err := configMgr.CreateBareMetalHost(ctx); err != nil {
+			log.Info("ESLEE: createBareMetalHost failed!", "err_mgs", err.Error())
+			return ctrl.Result{}, err
+		}
+	}
+
+	//Associate the baremetalhost hosting the machine
 	err = configMgr.Associate(ctx)
 	if err != nil {
 		return ctrl.Result{}, errors.Wrapf(err, "failed to associate the NodeConfig to a BaremetalHost")
@@ -177,7 +169,7 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	return ctrl.Result{}, nil
 }
 
-func (r *NodeConfigReconciler) joinNode(ctx context.Context, scope *Scope) error { // (_ ctrl.Result, reterr error) {
+func (r *NodeConfigReconciler) createNodeConfig(ctx context.Context, scope *Scope) error {
 	scope.Info("Creating BootstrapData for the node")
 
 	cloudInitData, err := cloudinit.NewNode(&cloudinit.NodeInput{

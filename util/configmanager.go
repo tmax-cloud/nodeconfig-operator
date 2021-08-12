@@ -21,11 +21,14 @@ import (
 
 	"github.com/go-logr/logr"
 	bmh "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
-	nco "github.com/tmax-cloud/nodeconfig-operator/api/v1alpha1"
+	"github.com/pkg/errors"
+	bootstrapv1 "github.com/tmax-cloud/nodeconfig-operator/api/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/utils/pointer"
 
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/patch"
@@ -35,7 +38,7 @@ import (
 type ConfigManager struct {
 	client client.Client
 
-	NodeConfig *nco.NodeConfig
+	NodeConfig *bootstrapv1.NodeConfig
 	Log        logr.Logger
 }
 
@@ -49,7 +52,7 @@ const (
 
 // NewConfigManager returns a new helper for managing a config
 func (c *ConfigManager) NewConfigManager(client client.Client,
-	nodeconfig *nco.NodeConfig,
+	nodeconfig *bootstrapv1.NodeConfig,
 	configLog logr.Logger) (*ConfigManager, error) {
 
 	return &ConfigManager{
@@ -202,6 +205,17 @@ func (c *ConfigManager) Associate(ctx context.Context) error {
 // 	return nil, nil
 // }
 
+// findHost return true when it founds the associated host by looking for an annotation
+// on the machine that contains a reference to the host.
+func (c *ConfigManager) FindHost(ctx context.Context) bool {
+	host, err := getHost(ctx, c.NodeConfig, c.client, c.Log)
+	// ESLEE: todo - error 발생했으면 status에 찍을 것인가
+	if err != nil && host != nil {
+		return true
+	}
+	return false
+}
+
 // getHost gets the associated host by looking for an annotation on the machine
 // that contains a reference to the host. Returns nil if not found. Assumes the
 // host is in the same namespace as the machine.
@@ -215,7 +229,7 @@ func (c *ConfigManager) getHost(ctx context.Context) (*bmh.BareMetalHost, *patch
 }
 
 // func getHost(ctx context.Context, cl client.Client, mLog logr.Logger) (*bmh.BareMetalHost, error) {
-func getHost(ctx context.Context, nConfig *nco.NodeConfig,
+func getHost(ctx context.Context, nConfig *bootstrapv1.NodeConfig,
 	cl client.Client, mLog logr.Logger) (*bmh.BareMetalHost, error) {
 	mLog.Info("ESLEE: Start to find host")
 	annotations := nConfig.ObjectMeta.GetAnnotations()
@@ -352,4 +366,75 @@ func (c *ConfigManager) clearError() {
 	if c.NodeConfig.Status.FailureMessage != nil {
 		c.NodeConfig.Status.FailureMessage = nil
 	}
+}
+
+func (c *ConfigManager) CreateBareMetalHost(ctx context.Context) error { //}, scope *Scope) error {
+	c.Log.Info("Creating BootstrapData for the node")
+	if !c.NodeConfig.CheckBMHDetails() {
+		c.Log.Error(nil, "ESLEE: BMH Undefined")
+	}
+	c.Log.Info("ESLEE: BMH info test",
+		"addr", c.NodeConfig.Spec.BMC.Address,
+		"userid", c.NodeConfig.Spec.BMC.Username,
+		"pw", c.NodeConfig.Spec.BMC.Password,
+		"img_url", c.NodeConfig.Spec.Image.URL,
+		"img_checksum", c.NodeConfig.Spec.Image.Checksum)
+
+	// ESLEE: Todo - BMH config validation
+	bmhost := &bmh.BareMetalHost{}
+	bmhost.ObjectMeta.Name = c.NodeConfig.Name
+	bmhost.ObjectMeta.Namespace = c.NodeConfig.Namespace
+	bmhost.Spec.Online = false
+	bmhost.Spec.BMC.Address = c.NodeConfig.Spec.BMC.Address
+	bmhost.Spec.BMC.CredentialsName = c.NodeConfig.Name + "-bmc-secret"
+	bmhost.Spec.BootMode = bmh.BootMode(c.NodeConfig.BootMode())
+	bmhost.Spec.BMC.DisableCertificateVerification = true
+	bmhost.Spec.Image = &bmh.Image{
+		URL:          c.NodeConfig.Spec.Image.URL,
+		Checksum:     string(c.NodeConfig.Spec.Image.Checksum),
+		ChecksumType: bmh.ChecksumType(c.NodeConfig.ChecksumType()),
+	}
+
+	c.Log.Info("ESLEE: BMH info test", "bmhost", bmhost.Spec)
+
+	if err := c.client.Create(ctx, bmhost); err != nil {
+		return errors.Wrapf(err, "failed to create BareMetalHost")
+	}
+
+	if err := c.storeBMHCredentials(ctx, bmhost); err != nil {
+		c.Log.Error(err, "failed to store BMC credentials")
+		return err
+	}
+	return nil
+}
+
+// storeBootstrapData creates a new secret with the data passed in as input,
+// sets the reference in the configuration status and ready to true.
+func (c *ConfigManager) storeBMHCredentials(ctx context.Context, bmhost *bmh.BareMetalHost) error {
+	c.Log.Info("Store the BMC secret", "BMC", c.NodeConfig.Spec.BMC)
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      c.NodeConfig.Name + "-bmc-secret",
+			Namespace: c.NodeConfig.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: bmh.GroupVersion.String(),
+					Kind:       "BareMetalHost",
+					Name:       bmhost.Name,
+					UID:        bmhost.UID,
+					Controller: pointer.BoolPtr(true),
+				},
+			},
+		},
+		Type: "Opaque",
+		Data: map[string][]byte{
+			"username": []byte(c.NodeConfig.Spec.BMC.Username),
+			"password": []byte(c.NodeConfig.Spec.BMC.Password),
+		},
+	}
+
+	if err := c.client.Create(ctx, secret); err != nil {
+		return errors.Wrapf(err, "failed to create BMC secret for BareMetalHost %s/%s", c.NodeConfig.Namespace, c.NodeConfig.Name)
+	}
+	return nil
 }
