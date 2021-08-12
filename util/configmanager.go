@@ -210,7 +210,12 @@ func (c *ConfigManager) Associate(ctx context.Context) error {
 func (c *ConfigManager) FindHost(ctx context.Context) bool {
 	host, err := getHost(ctx, c.NodeConfig, c.client, c.Log)
 	// ESLEE: todo - error 발생했으면 status에 찍을 것인가
-	if err != nil && host != nil {
+	// if err != nil && host != nil {
+	if err != nil {
+		c.Log.Error(err, "ESLEE_tmp: unexpected err")
+		return false
+	}
+	if host != nil {
 		return true
 	}
 	return false
@@ -371,7 +376,7 @@ func (c *ConfigManager) clearError() {
 }
 
 func (c *ConfigManager) CreateBareMetalHost(ctx context.Context) error { //}, scope *Scope) error {
-	c.Log.Info("Creating BootstrapData for the node")
+	c.Log.Info("Creating BareMetalHost for the node")
 	if !c.NodeConfig.CheckBMHDetails() {
 		c.Log.Error(nil, "ESLEE: BMH Undefined")
 	}

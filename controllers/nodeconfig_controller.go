@@ -151,6 +151,7 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	// Create the BareMetalHost CR
 	if !configMgr.FindHost(ctx) {
+		log.Info("ESLEE: no target BMH founded. Now create the BareMetalHost")
 
 		// ESLEE: todo (not done)
 		if err := configMgr.CreateBareMetalHost(ctx); err != nil {
