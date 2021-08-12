@@ -36,6 +36,35 @@ spec:
           spec:
             description: NodeConfigSpec defines the desired state of NodeConfig
             properties:
+              bmc:
+                description: BMC specifies the BMC configuration
+                properties:
+                  address:
+                    description: Address holds the URL for accessing the controller
+                      on the network.
+                    type: string
+                  bootMACAddress:
+                    description: Which MAC address will PXE boot? This is optional
+                      for some types, but required for libvirt VMs driven by vbmc.
+                    pattern: '[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){5}'
+                    type: string
+                  bootMode:
+                    description: Select the method of initializing the hardware during
+                      boot. Defaults to UEFI.
+                    enum:
+                    - UEFI
+                    - legacy
+                    type: string
+                  password:
+                    type: string
+                  username:
+                    description: ID/PW for authenticating with the BMC
+                    type: string
+                required:
+                - address
+                - password
+                - username
+                type: object
               cloudInitCommands:
                 description: CloudInitCommands specifies extra commands to run after
                   systemd
@@ -76,11 +105,27 @@ spec:
                   - path
                   type: object
                 type: array
-              format:
-                description: Format specifies the output format of the bootstrap data
-                enum:
-                - cloud-config
-                type: string
+              image:
+                description: Image holds the details of the image to be provisioned.
+                properties:
+                  checksum:
+                    description: Checksum is the checksum for the image.
+                    type: string
+                  checksumType:
+                    description: ChecksumType is the checksum algorithm for the image.
+                      e.g md5, sha256, sha512
+                    enum:
+                    - md5
+                    - sha256
+                    - sha512
+                    type: string
+                  url:
+                    description: URL is a location of an image to deploy.
+                    type: string
+                required:
+                - checksum
+                - url
+                type: object
               ntp:
                 description: NTP specifies NTP configuration
                 properties:
@@ -143,6 +188,9 @@ spec:
                   - name
                   type: object
                 type: array
+            required:
+            - bmc
+            - image
             type: object
           status:
             description: NodeConfigStatus defines the observed state of NodeConfig

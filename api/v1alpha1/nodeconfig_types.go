@@ -227,7 +227,7 @@ type Image struct {
 	ChecksumType ChecksumType `json:"checksumType,omitempty"`
 }
 
-func (nc *NodeConfig) checkBMHDetails() bool {
+func (nc *NodeConfig) CheckBMHDetails() bool {
 	if nc.Spec.BMC.Address != "" &&
 		nc.Spec.BMC.Username != "" &&
 		nc.Spec.BMC.Password != "" &&
