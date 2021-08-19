@@ -1,4 +1,4 @@
-# nodeconfig-operator
+# NodeConfig-Operator
 ## 구성 요소 및 버전
 * BMO(BareMetal-Operator) - capm3-v0.3.2: (https://github.com/metal3-io/baremetal-operator.git)
 
