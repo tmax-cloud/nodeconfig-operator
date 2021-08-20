@@ -1,36 +1,20 @@
 # API and Resource Definitions
 
-## BareMetalHost
+## NodeConfig
+Main responsibility of NCO(NodeConfig Operator) is to convert a **NodeConfig** bootstrap object into a cloud-init script that is going to turn a Baremetal Machine into a Legacy Node.
 
-**Metal³** introduces the concept of **BareMetalHost** resource, which
-defines a physical host and its properties. The **BareMetalHost** embeds
-two well differentiated sections, the bare metal host specification
-and its current status.
+The cloud-init script will be saved into the NodeConfig.Status.BootstrapData and then the BMO(BareMetal Operator) will pick up this value and proceed with the machine creation and the actual bootstrap.
 
-### Pausing reconciliation
+NCO also supports BMH(BareMetalHost) resource creation. 
+The `NodeConfig.Specs.BMC` is a connection information for the BMC (Baseboard Management 
+Controller) on the host and `NodeConfig.Specs.image` contains details for the image to be 
+deployed on a given host. Above two sections are used to create **BareMetalHost** resource,
+which defines a physical host and its properties. The other **NodeConfig** objects supports 
+customizing the content of the config-data
 
-It is possible to pause the reconciliation of a BareMetalHost object by adding
-an annotation `baremetalhost.metal3.io/paused`. **Metal³**  provider sets the
-value of this annotation as `metal3.io/capm3` when the cluster to which the
-**BareMetalHost** belongs, is paused and removes it when the cluster is
-not paused. If you want to pause the reconciliation of **BareMetalHost** you can
-put any value on this annotation **other than `metal3.io/capm3`**. Please make
-sure that you remove the annotation  **only if the value of the annotation is
-not `metal3.io/capm3`, but another value that you have provided**. Removing the
-annotation will enable the reconciliation again.
+### NodeConfig spec
 
-### Unhealthy annotation
-
-It is possible to mark BareMetalHost object as unhealthy by adding an
-annotation `baremetalhost.metal3.io/unhealthy`. This annotation does not
-stop the reconciliation of the BMH. This annotation is used in the upper layers
-for coordination. For example **Metal³** provider should not provision BMH
-set as unhealthy. Removing the annotation will enable the normal operations
-on the provider layers.
-
-### BareMetalHost spec
-
-The *BareMetalHost's* *spec* defines the desire state of the host. It contains
+The *NodeConfig's* *spec* defines the desire state of the host. It contains
 mainly, but not only, provisioning details.
 
 #### Spec fields
@@ -42,43 +26,9 @@ mainly, but not only, provisioning details.
     * IPMI
       * `ipmi://<host>:<port>`, an unadorned `<host>:<port>` is also accepted
         and the port is optional, if using the default one (623).
-    * Dell iDRAC
-      * `idrac://` (or `idrac+http://` to disable TLS).
-      * `idrac-virtualmedia://` to use virtual media instead of PXE
-        for attaching the provisioning image to the host.
-    * Fujitsu iRMC
-      * `irmc://<host>:<port>`, where `<port>` is optional if using the default.
-    * HUAWEI ibmc
-      * `ibmc://<host>:<port>` (or `ibmc+http://<host>:<port>` to disable TLS)
-    * Redfish
-      * `redfish://` (or `redfish+http://` to disable TLS)
-      * `redfish-virtualmedia://` to use virtual media instead of PXE
-        for attaching the provisioning image to the host.
-      * The hostname or IP address, and the path to the system ID are
-        required for all variants.  For example
-        `redfish://myhost.example/redfish/v1/Systems/System.Embedded.1`
-        or `redfish://myhost.example/redfish/v1/Systems/1`
-
-  * *credentialsName* -- A reference to a *secret* containing the
-    username and password for the BMC.
-
-  * *disableCertificateVerification* -- A boolean to skip certificate
-    validation when true.
-
-* *online* -- A boolean indicating whether the host should be powered on
-  (true) or off (false). Changing this value will trigger a change in
-  power state on the physical host.
-
-* *consumerRef* -- A reference to another resource that is using the
-  host, it could be empty if the host is not being currently used.
-  For example, a *Machine* resource when the host is being used by the
-  [*machine-api*](https://github.com/kubernetes-sigs/cluster-api).
-
-* *externallyProvisioned* -- A boolean indicating whether the host
-  provisioning and deprovisioning are managed externally. When set,
-  the host's power status and hardware inventory will be monitored
-  but no provisioning or deprovisioning operations are performed
-  on the host.
+  * *bootMode* -- The method of initializing the hardware during boot
+  * *username* -- the username for the BMC
+  * *password* -- the password for the BMC
 
 * *image* -- Holds details for the image to be deployed on a given host.
   * *url* -- The URL of an image to deploy to the host.
@@ -87,65 +37,13 @@ mainly, but not only, provisioning details.
   * *checksumType* -- Checksum algorithms can be specified. Currently
     only `md5`, `sha256`, `sha512` are recognized. If nothing is specified
     `md5` is assumed.
-  * *format* -- This is the disk format of the image. It can be one of `raw`,
-    `qcow2`, `vdi`, `vmdk`, or be left unset. Setting it to raw enables raw
-    image streaming in Ironic agent for that image.
+    
+* *files* -- specifies additional files to be created on the machine
+* *cloudInitCommands* -- specifies a list of commands to be executed on first boot(after OS installation)
+* *users* -- specifies a list of users to be created on the machine
+* *ntp* -- specifies NTP settings for the machine
 
-* *userData* -- A reference to the Secret containing the cloudinit user data
-  and its namespace, so it can be attached to the host before it boots
-  for configuring different aspects of the OS (like networking, storage, ...).
-
-* *networkData* -- A reference to the Secret containing the network
-  configuration data (e.g. network\_data.json) and its namespace, so it can be
-  attached to the host before it boots to set network up
-
-* *description* -- A human-provided string to help identify the host.
-
-* *hardwareProfile* -- **This field is deprecated. See rootDeviceHints instead.**
-  The name of the hardware profile to use. The following are the current
-  supported `hardwareProfile` settings and their corresponding root devices.
-
-  | **hardwareProfile** | **Root Device** |
-  |---------------------|-----------------|
-  | `unknown`           | /dev/sda        |
-  | `libvirt`           | /dev/vda        |
-  | `dell`              | HCTL: 0:0:0:0   |
-  | `dell-raid`         | HCTL: 0:2:0:0   |
-  | `openstack`         | /dev/vdb        |
-
-  **NOTE:** These are subject to change.
-
-* *rootDeviceHints* -- Guidance for how to choose the device to
-  receive the image being provisioned. The storage devices are
-  examined in the order they are discovered during inspection and the
-  hint values are compared to the inspected values. The first
-  discovered device that matches is used. Hints can be combined, and
-  if multiple hints are provided then a device must match all hints in
-  order to be selected.
-  * *deviceName* -- A string containing a Linux device name like
-    `/dev/vda`. The hint must match the actual value exactly.
-  * *hctl* -- A string containing a SCSI bus address like
-    `0:0:0:0`. The hint must match the actual value exactly.
-  * *model* -- A string containing a vendor-specific device
-    identifier. The hint can be a substring of the actual value.
-  * *vendor* -- A string containing the name of the vendor or
-    manufacturer of the device. The hint can be a substring of the
-    actual value.
-  * *serialNumber* -- A string contianing the device serial
-    number. The hint must match the actual value exactly.
-  * *minSizeGigabytes* -- An integer representing the minimum size of the
-    device in Gigabytes.
-  * *wwn* -- A string containing the unique storage identifier. The
-    hint must match the actual value exactly.
-  * *wwnWithExtension* -- A string containing the unique storage
-    identifier with the vendor extension appended. The hint must match
-    the actual value exactly.
-  * *wwnVendorExtension* -- A string containing the unique vendor
-    storage indentifier. The hint must match the actual value exactly.
-  * *rotational* -- A boolean indicating whether the device should be
-    a rotating disk (`true`) or not (`false`).
-
-### BareMetalHost status
+### NodeConfig status
 
 Moving onto the next block, the *BareMetalHost's* *status* which represents
 the host's current state. Including tested credentials, current hardware
