@@ -50,6 +50,7 @@
 
 ## Resources
 * [API documentation](docs/api.md)
+* [BMO API documentation](https://github.com/metal3-io/baremetal-operator/blob/capm3-v0.3.2/docs/api.md)
 * [Setup Development Environment](docs/dev-setup.md)
 * [Configuration](docs/configuration.md)
 * [Testing](docs/testing.md)
