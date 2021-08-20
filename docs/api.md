@@ -50,227 +50,73 @@ the host's current state. Including tested credentials, current hardware
 details, etc.
 
 #### Status fields
+* *ready* -- indicates the BootstrapData field is ready to be consumed
+* *dataSecretName* -- the name of the secret that stores the bootstrap data script
+* *userData* -- a references the Secret that holds user data needed by the bare metal operator
 
-* *goodCredentials* -- A reference to the secret and its namespace
-  holding the last set of BMC credentials the system was able to validate
-  as working.
+### NodeConfig Example
 
-* *triedCredentials* -- A reference to the secret and its namespace
-  holding the last set of BMC credentials that were sent to
-  the provisioning backend.
-
-* *lastUpdated* -- The timestamp of the last time the status of the
-  host was updated.
-
-* *operationalStatus* -- The status of the server. Value is one of the
-  following:
-  * *OK* -- Indicates all the details for the host are known and working,
-    meaning the host is correctly configured and manageable.
-  * *discovered* -- Implies some of the host's details are either
-    not working correctly or missing. For example, the BMC address is known
-    but the login credentials are not.
-  * *error* -- Indicates the system found some sort of irrecuperable error.
-    Refer to the *errorMessage* field in the status section for more details.
-
-* *errorMessage* -- Details of the last error reported by the provisioning
-  backend, if any.
-
-* *hardware* -- The details for hardware capabilities discovered on the
-  host. These are filled in by the provisioning agent when the host is
-  registered.
-  * *nics* -- List of network interfaces for the host.
-    * *name* -- A string identifying the network device,
-      e.g. *nic-1*.
-    * *mac* -- The MAC address of the NIC.
-    * *ip* -- The IP address of the NIC, if one was assigned
-      when the discovery agent ran.
-    * *speedGbps* -- The speed of the device in Gbps.
-    * *vlans* -- A list holding all the VLANs available for this NIC.
-    * *vlanId* -- The untagged VLAN ID.
-    * *pxe* -- Whether the NIC is able to boot using PXE.
-  * *storage* -- List of storage (disk, SSD, etc.) available to the host.
-    * *name* -- A string identifying the storage device,
-      e.g. *disk 1 (boot)*.
-    * *rotational* -- Either true or false, indicates whether the disk
-      is rotational.
-    * *sizeBytes* -- Size of the storage device.
-    * *serialNumber* -- The device's serial number.
-  * *cpu* -- Details of the CPU(s) in the system.
-    * *arch* -- The architecture of the CPU.
-    * *model* -- The model string.
-    * *clockMegahertz* -- The speed in GHz of the CPU.
-    * *flags* -- List of CPU flags, e.g. 'mmx','sse','sse2','vmx', ...
-    * *count* -- Amount of these CPUs available in the system.
-  * *firmware* -- Contains BIOS information like for instance its *vendor*
-    and *version*.
-  * *systemVendor* -- Contains information about the host's *manufacturer*,
-    the *productName* and *serialNumber*.
-  * *ramMebibytes* -- The host's amount of memory in Mebibytes.
-
-* *hardwareProfile* -- **This field is deprecated. See rootDeviceHints instead.**
-  The name of the hardware profile that matches the
-  hardware discovered on the host based on the details saved
-  to the *Hardware* section. If the hardware does not match any
-  known profile, the value `unknown` will be set on this field
-  and is used by default. In practice, this only affects which device
-  the OS image will be written to. The following are the current
-  supported `hardwareProfile` settings and their corresponding root devices.
-
-  | **hardwareProfile** | **Root Device** |
-  |---------------------|-----------------|
-  | `unknown`           | /dev/sda        |
-  | `libvirt`           | /dev/vda        |
-  | `dell`              | HCTL: 0:0:0:0   |
-  | `dell-raid`         | HCTL: 0:2:0:0   |
-  | `openstack`         | /dev/vdb        |
-
-  **NOTE:** These are subject to change.
-
-* *poweredOn* -- Boolean indicating whether the host is powered on.
-  See *online* on the *BareMetalHost's* *Spec*.
-
-* *provisioning* -- Settings related to deploying an image to the host.
-  * *state* -- The current state of any ongoing provisioning operation.
-    The following are the currently supported ones:
-    * *\<empty string\>* -- There is no provisioning happening, at the moment.
-    * *registration error* -- The details for the host's BMC are
-      either incorrect or incomplete therfore the host could not be managed.
-    * *registering* -- The host's BMC details are being checked.
-    * *match profile* -- The discovered hardware details on the host
-      are being compared against known profiles.
-    * *ready* -- The host is available to be consumed.
-    * *provisioning* -- An image is being written to the host's disk(s).
-    * *provisioning error* -- The image could not be written to the host.
-    * *provisioned* -- An image has been completely written to the host's
-      disk(s).
-    * *externally provisioned* -- Metal³ does not manage the image on the host.
-    * *deprovisioning* -- The image is being wiped from the host's disk(s).
-    * *inspecting* -- The hardware details for the host are being collected
-      by an agent.
-    * *power management error* -- An error was found while trying to power
-      the host either on or off.
-  * *id* -- The unique identifier for the service in the underlying
-    provisioning tool.
-  * *image* -- The image most recently provisioned to the host.
-  * *rootDeviceHints* -- The root device selection instructions used
-    for the most recent provisioning operation.
-
-### BareMetalHost Example
-
-The following is a complete example from a running cluster of a *BareMetalHost*
+The following is a complete example from a running cluster of a *NodeConfig*
 resource (in YAML), it includes its specification and status sections:
 
 ```yaml
-apiVersion: metal3.io/v1alpha1
-kind: BareMetalHost
+apiVersion: bootstrap.tmax.io/v1alpha1
+kind: NodeConfig
 metadata:
-  creationTimestamp: "2019-09-20T06:33:35Z"
-  finalizers:
-  - baremetalhost.metal3.io
-  generation: 2
-  name: bmo-master-0
-  namespace: bmo-project
-  resourceVersion: "22642"
-  selfLink: /apis/metal3.io/v1alpha1/namespaces/bmo-project/baremetalhosts/bmo-master-0
-  uid: 92b2f77a-db70-11e9-9db1-525400764849
+  name: #Node_ID
+  annotations:
+    metal3.io/BareMetalHost: "metal3/#Node_ID"
 spec:
   bmc:
-    address: ipmi://10.10.57.19
-    credentialsName: bmo-master-0-bmc-secret
-  bootMACAddress: 98:03:9b:61:80:48
-  consumerRef:
-    apiVersion: machine.openshift.io/v1beta1
-    kind: Machine
-    name: bmo-master-0
-    namespace: bmo-project
-  externallyProvisioned: true
-  hardwareProfile: default
+    address: #IP_ADDR
+    bootMode: UEFI
+    username: #BMC_USER
+    password: #BMC_PWD
   image:
-    checksum: http://172.16.1.100/images/myOSv1/myOS.qcow2.md5sum
-    url: http://172.16.1.100/images/myOSv1/myOS.qcow2
-  online: true
-  userData:
-    name: bmo-master-user-data
-    namespace: bmo-project
-  networkData:
-    name: bmo-master-network-data
-    namespace: bmo-project
-  metaData:
-    name: bmo-master-meta-data
-    namespace: bmo-project
-status:
-  errorMessage: ""
-  goodCredentials:
-    credentials:
-      name: bmo-master-0-bmc-secret
-      namespace: bmo-project
-    credentialsVersion: "5562"
-  hardware:
-    cpu:
-      arch: x86_64
-      clockMegahertz: 2000
-      count: 40
-      flags: []
-      model: Intel(R) Xeon(R) Gold 6138 CPU @ 2.00GHz
-    firmware:
-      bios:
-        date: 12/17/2018
-        vendor: Dell Inc.
-        version: 1.6.13
-    hostname: bmo-master-0.localdomain
-    nics:
-    - ip: 172.22.135.105
-      mac: "00:00:00:00:00:00"
-      model: unknown
-      name: eno1
-      pxe: true
-      speedGbps: 25
-      vlanId: 0
-    ramMebibytes: 0
-    storage: []
-    systemVendor:
-      manufacturer: Dell Inc.
-      productName: PowerEdge r460
-      serialNumber: ""
-  hardwareProfile: ""
-  lastUpdated: "2019-09-20T07:03:23Z"
-  operationalStatus: OK
-  poweredOn: true
-  provisioning:
-    ID: a4438010-3fc6-4c5c-b570-900bbe85da57
-    image:
-      checksum: ""
-      url: ""
-    state: externally provisioned
-  triedCredentials:
-    credentials:
-      name: bmo-master-0-bmc-secret
-      namespace: bmo-project
-    credentialsVersion: "5562"
-```
-
-And here it is the secret `bmo-master-0-bmc-secret` holding the host's BMC credentials:
-
-```yaml
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: bmo-master-0-bmc-secret
-type: Opaque
-data:
-  username: YWRtaW4=
-  password: cGFzc3dvcmQ=
+    url: #QCOW2_URL
+    checksum: #IMG_CHKSUM_URL
+    checksumType: md5
+  files:
+  - content: |
+      TYPE=Ethernet
+      BOOTPROTO=static
+      DEVICE=eth2
+      ONBOOT=yes
+      USERCTL=no
+      IPADDR=#NODE_IP
+      NETMASK=255.255.255.0
+      GATEWAY=#GW_IP
+    owner: root:root
+    path: /etc/sysconfig/network-scripts/ifcfg-eth2
+    permissions: "0755"
+  cloudInitCommands:
+  - adduser tmax
+  - ( echo 'root'; echo 'root'; ) | passwd tmax
+  - ( echo 'tmax@23'; echo 'tmax@23'; ) | passwd root
+  - ifup eth2
+  - yum update -y
+  - setenforce 0
+  - sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
+  - >-
+    yum install gcc kernel-headers kernel-devel keepalived
+    device-mapper-persistent-data lvm2
+  - systemctl enable --now keepalived
+  - sysctl net.bridge.bridge-nf-call-iptables=1
+  users:
+  - name: #USER_ID
+    sshAuthorizedKeys:
+    - ssh-rsa XXX
+    sudo: ALL=(ALL) NOPASSWD:ALL
 ```
 
 ## Triggering Provisioning
 
 Several conditions must be met in order to initiate provisioning.
 
-1. The host `spec.image.url` field must contain a URL for a valid
+1. The BMH `spec.image.url` field must contain a URL for a valid
    image file that is visible from within the cluster and from the
    host receiving the image.
-2. The host must have `online` set to `true` so that the operator will
+2. The BMH must have `online` set to `true` so that the operator will
    keep the host powered on.
 
 To initiate deprovisioning, clear the image URL from the host spec.
