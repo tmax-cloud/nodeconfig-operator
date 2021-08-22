@@ -28,8 +28,8 @@
 	# BMO와 Ironic간 통신을 위해 필요한 설정: ${BMO_HOME}/deploy/ironic_ci.env
   ```
   
-### Step 1. CRDs 생성
-* 목적 : `설치할 정보를 기록한 CRD를 배포한다.`
+### Step 1. CRD 작성
+* 목적 : `설치할 정보를 기록한 CRD를 등록한다.`
 
 
 ### Step 2. BMO/NC-operator 설치
