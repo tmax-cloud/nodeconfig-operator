@@ -42,7 +42,7 @@
   $ kustomize build ${NCO_HOME}/config/default |kubectl apply -f -
   $ kubectl get pods -n metal3
   ```
-* [Step1](ttps://github.com/tmax-cloud/nodeconfig-operator#step-1-crd-작성)에서 작성한 nodeconfig crd 등록
+* [Step1](https://github.com/tmax-cloud/nodeconfig-operator#step-1-crd-작성)에서 작성한 nodeconfig crd 등록
   ```bash
   $ kustomize -n metal3 apply $nodecofig
   ```
