@@ -49,7 +49,7 @@
   $ curl ${IRONIC_ENDPOINT_IPADDR}:6385/v1/
   $ wget -P /tmp ${IRONIC_ENDPOINT_IPADDR}:${HTTP_PORT}/images/ironic-python-agent.initramfs
   ```
-* Ironic pod의 dnsmasq의 DHCP 서비스 정상 동작 여부 확인
+* Ironic pod에있는 dnsmasq의 DHCP 서비스 정상 동작 여부 확인
   ```bash
   $ nmap --script broadcast-dhcp-discover -e ${PROVISIONING_INTERFACE}
   ```
