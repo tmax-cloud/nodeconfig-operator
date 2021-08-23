@@ -30,20 +30,25 @@
   ```
   
 ### Step 1. CRD 작성
-* 설치할 정보를 기록한 nodeconfig CRD를 작성하여 등록한다.
-* [CRD 작성 참고](https://github.com/tmax-cloud/nodeconfig-operator/blob/master/docs/api.md)
+* 설치할 정보를 [nodeconfig CRD](https://github.com/tmax-cloud/nodeconfig-operator/blob/master/docs/api.md)에 작성하여 등록한다.
 
 
 ### Step 2. BMO/NC-operator 설치
 * 아래의 명령어를 사용하여 BMO와 NCO가 정상적으로 설치되었는지 확인한다.
   ```bash
+  $ kubectl create namespace metal3
   $ kustomize build ${BMO_HOME}/ironic-deployment/default/ |kubectl apply -f -
   $ kustomize build ${BMO_HOME}/deploy/default/ |kubectl apply -f -
   $ kustomize build ${NCO_HOME}/config/default |kubectl apply -f -
   $ kubectl get pods -n metal3
-   ```
-
-### Step 3. 동작 확인
+  ```
+* [Step1](ttps://github.com/tmax-cloud/nodeconfig-operator#step-1-crd-작성)에서 작성한 nodeconfig crd 등록
+  ```bash
+  $ kustomize -n metal3 apply $nodecofig
+  ```
+  
+##
+# Step 3. 동작 확인
 * *ironic-deployment/default/ironic_bmo_configmap.env*에 작성한 서비스 주소 접근 테스트
   ```bash
   $ curl ${IRONIC_ENDPOINT_IPADDR}:6385/v1/
