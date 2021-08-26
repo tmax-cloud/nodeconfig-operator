@@ -129,7 +129,7 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if !config.Status.Ready {
 		// log.Info("ESLEE_TMP: the userData secret already created")
 		// log.Info("ESLEE_TMP: before createNodeConfig call", "already userdata", config.Status.UserData, "ready?", config.Status.Ready)
-		if err := configMgr.CreateNodeConfig(ctx); err != nil {
+		if err := configMgr.CreateNodeInitConfig(ctx); err != nil {
 			log.Info("ESLEE: createNodeConfig failed!", "err_mgs", err.Error())
 			return ctrl.Result{}, err
 		}

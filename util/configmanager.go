@@ -207,7 +207,7 @@ func (c *ConfigManager) setHostSpec(ctx context.Context, host *bmh.BareMetalHost
 	return nil
 }
 
-func (c *ConfigManager) CreateNodeConfig(ctx context.Context) error {
+func (c *ConfigManager) CreateNodeInitConfig(ctx context.Context) error {
 	c.Log.Info("Creating BootstrapData for the node")
 
 	cloudInitData, err := cloudinit.NewNode(&cloudinit.NodeInput{
@@ -265,36 +265,6 @@ func (c *ConfigManager) CreateBareMetalHost(ctx context.Context) error {
 	return nil
 }
 
-// storeBMHCredentials creates a new secret with the BMH data passed in as input
-func (c *ConfigManager) storeBMHCredentials(ctx context.Context, bmhost *bmh.BareMetalHost) error {
-	c.Log.Info("Store the BMC secret", "BMC", c.NodeConfig.Spec.BMC)
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      c.NodeConfig.Name + "-bmc-secret",
-			Namespace: c.NodeConfig.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion: bmh.GroupVersion.String(),
-					Kind:       "BareMetalHost",
-					Name:       bmhost.Name,
-					UID:        bmhost.UID,
-					Controller: pointer.BoolPtr(true),
-				},
-			},
-		},
-		Type: "Opaque",
-		Data: map[string][]byte{
-			"username": []byte(c.NodeConfig.Spec.BMC.Username),
-			"password": []byte(c.NodeConfig.Spec.BMC.Password),
-		},
-	}
-
-	if err := c.client.Create(ctx, secret); err != nil {
-		return errors.Wrapf(err, "failed to create BMC secret for BareMetalHost %s/%s", c.NodeConfig.Namespace, c.NodeConfig.Name)
-	}
-	return nil
-}
-
 // storeBootstrapData creates a new secret with the data passed in as input,
 // sets the reference in the configuration status and ready to true.
 func (c *ConfigManager) storeBootstrapData(ctx context.Context, data []byte) error {
@@ -328,6 +298,36 @@ func (c *ConfigManager) storeBootstrapData(ctx context.Context, data []byte) err
 		Namespace: secret.Namespace,
 	}
 	// scope.Info("ESLEE_TMP: Store the Bootstrap data - success!", "status.secret", scope.Config.Status.DataSecretName, "status.ready", scope.Config.Status.Ready)
+	return nil
+}
+
+// storeBMHCredentials creates a new secret with the BMH data passed in as input
+func (c *ConfigManager) storeBMHCredentials(ctx context.Context, bmhost *bmh.BareMetalHost) error {
+	c.Log.Info("Store the BMC secret", "BMC", c.NodeConfig.Spec.BMC)
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      c.NodeConfig.Name + "-bmc-secret",
+			Namespace: c.NodeConfig.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: bmh.GroupVersion.String(),
+					Kind:       "BareMetalHost",
+					Name:       bmhost.Name,
+					UID:        bmhost.UID,
+					Controller: pointer.BoolPtr(true),
+				},
+			},
+		},
+		Type: "Opaque",
+		Data: map[string][]byte{
+			"username": []byte(c.NodeConfig.Spec.BMC.Username),
+			"password": []byte(c.NodeConfig.Spec.BMC.Password),
+		},
+	}
+
+	if err := c.client.Create(ctx, secret); err != nil {
+		return errors.Wrapf(err, "failed to create BMC secret for BareMetalHost %s/%s", c.NodeConfig.Namespace, c.NodeConfig.Name)
+	}
 	return nil
 }
 
