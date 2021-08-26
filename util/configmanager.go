@@ -23,7 +23,7 @@ import (
 	bmh "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	"github.com/pkg/errors"
 	bootstrapv1 "github.com/tmax-cloud/nodeconfig-operator/api/v1alpha1"
-	"github.com/tmax-cloud/nodeconfig-operator/cloudinit"
+	"github.com/tmax-cloud/nodeconfig-operator/util/cloudinit"
 	corev1 "k8s.io/api/core/v1"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"

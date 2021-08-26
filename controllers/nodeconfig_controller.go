@@ -31,8 +31,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	//ESLEE bsutil "sigs.k8s.io/cluster-api/bootstrap/util"
-
 	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 
 	bootstrapv1 "github.com/tmax-cloud/nodeconfig-operator/api/v1alpha1"
@@ -90,11 +88,6 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		log.Error(err, "failed to get config")
 		return ctrl.Result{}, err
 	}
-
-	// scope := &Scope{
-	// 	Logger: log,
-	// 	Config: config,
-	// }
 
 	// Initialize the patch helper.
 	patchHelper, err := patch.NewHelper(config, r.Client)
