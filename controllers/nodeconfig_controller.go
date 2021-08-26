@@ -23,14 +23,10 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
-	"github.com/tmax-cloud/nodeconfig-operator/cloudinit"
 	"github.com/tmax-cloud/nodeconfig-operator/util"
 
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/utils/pointer"
 	"sigs.k8s.io/cluster-api/util/patch"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -95,10 +91,10 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 
-	scope := &Scope{
-		Logger: log,
-		Config: config,
-	}
+	// scope := &Scope{
+	// 	Logger: log,
+	// 	Config: config,
+	// }
 
 	// Initialize the patch helper.
 	patchHelper, err := patch.NewHelper(config, r.Client)
@@ -133,7 +129,7 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if !config.Status.Ready {
 		// log.Info("ESLEE_TMP: the userData secret already created")
 		// log.Info("ESLEE_TMP: before createNodeConfig call", "already userdata", config.Status.UserData, "ready?", config.Status.Ready)
-		if err := r.createNodeConfig(ctx, scope); err != nil {
+		if err := configMgr.CreateNodeConfig(ctx); err != nil {
 			log.Info("ESLEE: createNodeConfig failed!", "err_mgs", err.Error())
 			return ctrl.Result{}, err
 		}
@@ -168,65 +164,4 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	log.Info("ESLEE: End reconcile")
 	return ctrl.Result{}, nil
-}
-
-func (r *NodeConfigReconciler) createNodeConfig(ctx context.Context, scope *Scope) error {
-	scope.Info("Creating BootstrapData for the node")
-
-	cloudInitData, err := cloudinit.NewNode(&cloudinit.NodeInput{
-		BaseUserData: cloudinit.BaseUserData{
-			AdditionalFiles:   scope.Config.Spec.Files,
-			NTP:               scope.Config.Spec.NTP,
-			CloudInitCommands: scope.Config.Spec.CloudInitCommands,
-			Users:             scope.Config.Spec.Users,
-		},
-	})
-	if err != nil {
-		scope.Error(err, "failed to create node configuration")
-		return err
-	}
-
-	if err := r.storeBootstrapData(ctx, scope, cloudInitData); err != nil {
-		scope.Error(err, "failed to store bootstrap data")
-		return err
-	}
-	return nil
-}
-
-// storeBootstrapData creates a new secret with the data passed in as input,
-// sets the reference in the configuration status and ready to true.
-func (r *NodeConfigReconciler) storeBootstrapData(ctx context.Context, scope *Scope, data []byte) error {
-	scope.Info("Store the Bootstrap data", "ready", scope.Config.Status.Ready, "secret", scope.Config.Status.DataSecretName)
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      scope.Config.Name,
-			Namespace: scope.Config.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion: bootstrapv1.GroupVersion.String(),
-					Kind:       "NodeConfig",
-					Name:       scope.Config.Name,
-					UID:        scope.Config.UID,
-					Controller: pointer.BoolPtr(true),
-				},
-			},
-		},
-		Data: map[string][]byte{
-			"value": data,
-		},
-	}
-
-	if err := r.Client.Create(ctx, secret); err != nil {
-		return errors.Wrapf(err, "failed to create bootstrap data secret for NodeConfig %s/%s", scope.Config.Namespace, scope.Config.Name)
-	}
-
-	// ESLEE: Deprecated datasecretname
-	// scope.Config.Status.DataSecretName = pointer.StringPtr(secret.Name)
-	scope.Config.Status.Ready = true
-	scope.Config.Status.UserData = &corev1.SecretReference{
-		Name:      secret.Name,
-		Namespace: secret.Namespace,
-	}
-	// scope.Info("ESLEE_TMP: Store the Bootstrap data - success!", "status.secret", scope.Config.Status.DataSecretName, "status.ready", scope.Config.Status.Ready)
-	return nil
 }

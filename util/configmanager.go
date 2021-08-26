@@ -23,6 +23,7 @@ import (
 	bmh "github.com/metal3-io/baremetal-operator/apis/metal3.io/v1alpha1"
 	"github.com/pkg/errors"
 	bootstrapv1 "github.com/tmax-cloud/nodeconfig-operator/api/v1alpha1"
+	"github.com/tmax-cloud/nodeconfig-operator/cloudinit"
 	corev1 "k8s.io/api/core/v1"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -206,6 +207,29 @@ func (c *ConfigManager) setHostSpec(ctx context.Context, host *bmh.BareMetalHost
 	return nil
 }
 
+func (c *ConfigManager) CreateNodeConfig(ctx context.Context) error {
+	c.Log.Info("Creating BootstrapData for the node")
+
+	cloudInitData, err := cloudinit.NewNode(&cloudinit.NodeInput{
+		BaseUserData: cloudinit.BaseUserData{
+			AdditionalFiles:   c.NodeConfig.Spec.Files,
+			NTP:               c.NodeConfig.Spec.NTP,
+			CloudInitCommands: c.NodeConfig.Spec.CloudInitCommands,
+			Users:             c.NodeConfig.Spec.Users,
+		},
+	})
+	if err != nil {
+		c.Log.Error(err, "failed to create node configuration")
+		return err
+	}
+
+	if err := c.storeBootstrapData(ctx, cloudInitData); err != nil {
+		c.Log.Error(err, "failed to store bootstrap data")
+		return err
+	}
+	return nil
+}
+
 func (c *ConfigManager) CreateBareMetalHost(ctx context.Context) error {
 	c.Log.Info("Creating BareMetalHost for the node")
 	if !c.NodeConfig.CheckBMHDetails() {
@@ -268,6 +292,42 @@ func (c *ConfigManager) storeBMHCredentials(ctx context.Context, bmhost *bmh.Bar
 	if err := c.client.Create(ctx, secret); err != nil {
 		return errors.Wrapf(err, "failed to create BMC secret for BareMetalHost %s/%s", c.NodeConfig.Namespace, c.NodeConfig.Name)
 	}
+	return nil
+}
+
+// storeBootstrapData creates a new secret with the data passed in as input,
+// sets the reference in the configuration status and ready to true.
+func (c *ConfigManager) storeBootstrapData(ctx context.Context, data []byte) error {
+	c.Log.Info("Store the Bootstrap data", "ready", c.NodeConfig.Status.Ready, "secret", c.NodeConfig.Status.DataSecretName)
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      c.NodeConfig.Name,
+			Namespace: c.NodeConfig.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: bootstrapv1.GroupVersion.String(),
+					Kind:       "NodeConfig",
+					Name:       c.NodeConfig.Name,
+					UID:        c.NodeConfig.UID,
+					Controller: pointer.BoolPtr(true),
+				},
+			},
+		},
+		Data: map[string][]byte{
+			"value": data,
+		},
+	}
+
+	if err := c.client.Create(ctx, secret); err != nil {
+		return errors.Wrapf(err, "failed to create bootstrap data secret for NodeConfig %s/%s", c.NodeConfig.Namespace, c.NodeConfig.Name)
+	}
+
+	c.NodeConfig.Status.Ready = true
+	c.NodeConfig.Status.UserData = &corev1.SecretReference{
+		Name:      secret.Name,
+		Namespace: secret.Namespace,
+	}
+	// scope.Info("ESLEE_TMP: Store the Bootstrap data - success!", "status.secret", scope.Config.Status.DataSecretName, "status.ready", scope.Config.Status.Ready)
 	return nil
 }
 
