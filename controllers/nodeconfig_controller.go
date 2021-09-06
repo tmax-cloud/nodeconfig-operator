@@ -25,6 +25,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/tmax-cloud/nodeconfig-operator/util"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/cluster-api/util/patch"
@@ -47,7 +48,6 @@ type NodeConfigReconciler struct {
 type Scope struct {
 	logr.Logger
 	Config *bootstrapv1.NodeConfig
-	//ESLEE ConfigOwner *bsutil.ConfigOwner
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -79,6 +79,7 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	log := ctrllog.FromContext(ctx)
 	log.Info("Start nodeconfig operator reconcile")
 
+	// Todo: input NodeConfig Validation with webhook
 	// Fetch the NodeConfig instance.
 	config := &bootstrapv1.NodeConfig{}
 	if err := r.Client.Get(ctx, req.NamespacedName, config); err != nil {
@@ -87,6 +88,12 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 		log.Error(err, "failed to get config")
 		return ctrl.Result{}, err
+	}
+
+	// Do nothing if the state of NC is already 'ready'
+	if config.Status.Ready {
+		log.Info("The work related to NodeConfig %s has already completed", config.Name)
+		return ctrl.Result{}, nil
 	}
 
 	// Initialize the patch helper.
@@ -108,53 +115,58 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, errors.Wrapf(err, "failed to create helper for managing the configMgr")
 	}
 
+	// Deprecate the way of finding BMH with using annotation
 	// Check if the nodeconfig was associated with a baremetalhost
-	if !configMgr.HasAnnotation() {
-		err := configMgr.EnsureAnnotation(ctx)
-		if err != nil {
-			configMgr.SetError("Failed to annotate the NodeConfig")
-			// c.Log.Error(nil, "ESLEE_TMP: Failed to annotate the NodeConfig")
-			return ctrl.Result{}, err
-		}
-		log.Info("ESLEE_TMP: Ends up checking annotation")
-	}
+	// if !configMgr.HasAnnotation() {
+	// 	err := configMgr.EnsureAnnotation(ctx)
+	// 	if err != nil {
+	// 		configMgr.SetError("failed to annotate the NodeConfig")
+	// 		return ctrl.Result{}, err
+	// 	}
+	// }
 
-	if !config.Status.Ready {
-		// log.Info("ESLEE_TMP: the userData secret already created")
-		// log.Info("ESLEE_TMP: before createNodeConfig call", "already userdata", config.Status.UserData, "ready?", config.Status.Ready)
-		if err := configMgr.CreateNodeInitConfig(ctx); err != nil {
-			log.Info("ESLEE: createNodeConfig failed!", "err_mgs", err.Error())
-			return ctrl.Result{}, err
+	// Create CloudInit data as nodeinitconfig
+	cloudinitName, err := configMgr.CreateNodeInitConfig(ctx)
+	if err != nil {
+		log.Info("failed to create a NodeConfig!", "err_mgs", err.Error())
+		return ctrl.Result{}, err
+	} else {
+		// Set secret reference
+		config.Status.UserData = &corev1.SecretReference{
+			Name:      cloudinitName,
+			Namespace: config.Namespace,
 		}
 		if err := patchHelper.Patch(ctx, config); err != nil {
-			log.Info("failed to Patch nodeconfig")
+			log.Info("failed to nodeconfig patch referencing cloudinit secret")
 			return ctrl.Result{}, err
 		}
 	}
 
 	// Skip the association
-	if config.ObjectMeta.OwnerReferences != nil {
-		// log.Info("ESLEE_TMP: already associated", "ownerRef", config.ObjectMeta.OwnerReferences)
+	// if config.ObjectMeta.OwnerReferences != nil {
+	// 	// log.Info("ESLEE_TMP: already associated", "ownerRef", config.ObjectMeta.OwnerReferences)
+	// 	return ctrl.Result{}, nil
+	// }
+
+	// Create the BareMetalHost CR
+	if bmh, isAvail := configMgr.FindHost(ctx); bmh == nil {
+		log.Info("failed to found the target BMH. Now create a BareMetalHost")
+		if err := configMgr.CreateBareMetalHost(ctx); err != nil {
+			log.Info("failed to create a BareMetalHost!", "err_mgs", err.Error())
+			return ctrl.Result{}, err
+		}
+	} else if !isAvail {
+		// Delete the NodeConfig
+		if err := r.Client.Delete(ctx, config); err != nil {
+			return ctrl.Result{}, errors.Wrapf(err, "failed to delete the NodeConfig %s/%s", config.Namespace, config.Name)
+		}
 		return ctrl.Result{}, nil
 	}
 
-	// Create the BareMetalHost CR
-	if !configMgr.FindHost(ctx) {
-		log.Info("ESLEE: no target BMH founded. Now create the BareMetalHost")
-
-		// ESLEE: todo (not done)
-		if err := configMgr.CreateBareMetalHost(ctx); err != nil {
-			log.Info("ESLEE: createBareMetalHost failed!", "err_mgs", err.Error())
-			return ctrl.Result{}, err
-		}
-	}
-
 	//Associate the baremetalhost hosting the machine
-	err = configMgr.Associate(ctx)
-	if err != nil {
+	if err = configMgr.Associate(ctx); err != nil {
 		return ctrl.Result{}, errors.Wrapf(err, "failed to associate the NodeConfig to a BaremetalHost")
 	}
 
-	log.Info("ESLEE: End reconcile")
 	return ctrl.Result{}, nil
 }

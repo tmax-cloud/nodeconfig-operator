@@ -28,7 +28,6 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/tools/cache"
 	"k8s.io/utils/pointer"
 
 	"sigs.k8s.io/cluster-api/util"
@@ -44,11 +43,11 @@ type ConfigManager struct {
 }
 
 const (
-	// ProviderName is exported.
-	ProviderName = "metal3"
-	// HostAnnotation is the key for an annotation that should go on a Metal3Machine to
-	// reference what BareMetalHost it corresponds to.
-	HostAnnotation = "metal3.io/BareMetalHost"
+// ProviderName is exported.
+// ProviderName = "metal3"
+// HostAnnotation is the key for an annotation that should go on a Metal3Machine to
+// reference what BareMetalHost it corresponds to.
+// HostAnnotation = "metal3.io/BareMetalHost"
 )
 
 // NewConfigManager returns a new helper for managing a config
@@ -120,17 +119,20 @@ func (c *ConfigManager) Associate(ctx context.Context) error {
 
 // findHost return true when it founds the associated host by looking for an annotation
 // on the machine that contains a reference to the host.
-func (c *ConfigManager) FindHost(ctx context.Context) bool {
-	host, err := getHost(ctx, c.NodeConfig, c.client, c.Log)
+func (c *ConfigManager) FindHost(ctx context.Context) (*bmh.BareMetalHost, bool) {
 	// ESLEE: todo - error 발생했으면 status에 찍을 것인가
-	if err != nil {
+	if host, err := getHost(ctx, c.NodeConfig, c.client, c.Log); err == nil {
+		provState := host.Status.Provisioning.State
+		if provState == "ready" || provState == "inspecting" ||
+			provState == "registering" || provState == "match profile" ||
+			provState == "available" {
+			return host, true
+		}
+		return host, false
+	} else {
 		c.Log.Error(err, "ESLEE_tmp: unexpected err")
-		return false
 	}
-	if host != nil {
-		return true
-	}
-	return false
+	return nil, false
 }
 
 // getHost gets the associated host by looking for an annotation on the machine
@@ -148,20 +150,21 @@ func (c *ConfigManager) getHost(ctx context.Context) (*bmh.BareMetalHost, *patch
 func getHost(ctx context.Context, nConfig *bootstrapv1.NodeConfig,
 	cl client.Client, mLog logr.Logger) (*bmh.BareMetalHost, error) {
 	// mLog.Info("ESLEE: Start to find host")
-	annotations := nConfig.ObjectMeta.GetAnnotations()
-	if annotations == nil {
-		return nil, nil
-	}
-	hostKey, ok := annotations[HostAnnotation]
-	if !ok {
-		// mLog.Info("ESLEE: no metal3/baremetalhost annotation")
-		return nil, nil
-	}
-	hostNamespace, hostName, err := cache.SplitMetaNamespaceKey(hostKey)
-	if err != nil {
-		mLog.Error(err, "Error parsing annotation value", "annotation key", hostKey)
-		return nil, err
-	}
+	// annotations := nConfig.ObjectMeta.GetAnnotations()
+	// if annotations == nil {
+	// 	return nil, nil
+	// }
+	// hostKey, ok := annotations[HostAnnotation]
+	// if !ok {
+	// 	// mLog.Info("ESLEE: no metal3/baremetalhost annotation")
+	// 	return nil, nil
+	// }
+	// hostNamespace, hostName, err := cache.SplitMetaNamespaceKey(hostKey)
+	// if err != nil {
+	// 	mLog.Error(err, "Error parsing annotation value", "annotation key", hostKey)
+	// 	return nil, err
+	// }
+	hostNamespace, hostName := nConfig.Namespace, nConfig.Name
 
 	// mLog.Info("ESLEE_TMP: Where's my BMH")
 	host := bmh.BareMetalHost{}
@@ -169,18 +172,16 @@ func getHost(ctx context.Context, nConfig *bootstrapv1.NodeConfig,
 		Name:      hostName,
 		Namespace: hostNamespace,
 	}
-	err = cl.Get(ctx, key, &host)
+	err := cl.Get(ctx, key, &host)
 	if apierrors.IsNotFound(err) {
-		mLog.Info("Annotated host not found", "host", hostKey)
+		mLog.Info("Can't find target BareMetalHost CR", "host", hostName)
 		return nil, nil
 	} else if err != nil {
 		return nil, err
 	}
-	// mLog.Info("ESLEE_TMP: Found host", "host", hostKey)
 	return &host, err
 }
 
-// setHostSpec will ensure the host's Spec is set according to the machine's
 // details. It will then update the host via the kube API.
 func (c *ConfigManager) setHostSpec(ctx context.Context, host *bmh.BareMetalHost) error {
 	// Not provisioning while we do not have the UserData and images
@@ -207,7 +208,7 @@ func (c *ConfigManager) setHostSpec(ctx context.Context, host *bmh.BareMetalHost
 	return nil
 }
 
-func (c *ConfigManager) CreateNodeInitConfig(ctx context.Context) error {
+func (c *ConfigManager) CreateNodeInitConfig(ctx context.Context) (string, error) {
 	c.Log.Info("Creating BootstrapData for the node")
 
 	cloudInitData, err := cloudinit.NewNode(&cloudinit.NodeInput{
@@ -220,20 +221,21 @@ func (c *ConfigManager) CreateNodeInitConfig(ctx context.Context) error {
 	})
 	if err != nil {
 		c.Log.Error(err, "failed to create node configuration")
-		return err
+		return "", err
 	}
 
-	if err := c.storeBootstrapData(ctx, cloudInitData); err != nil {
+	cloudinitName, err := c.storeBootstrapData(ctx, cloudInitData)
+	if err != nil {
 		c.Log.Error(err, "failed to store bootstrap data")
-		return err
+		return "", err
 	}
-	return nil
+	return cloudinitName, nil
 }
 
 func (c *ConfigManager) CreateBareMetalHost(ctx context.Context) error {
 	c.Log.Info("Creating BareMetalHost for the node")
 	if !c.NodeConfig.CheckBMHDetails() {
-		c.Log.Error(nil, "ESLEE: BMH Undefined")
+		c.Log.Error(nil, "Invalid BMH input")
 	}
 	// c.Log.Info("ESLEE: BMH info test",
 	// 	"addr", c.NodeConfig.Spec.BMC.Address,
@@ -267,7 +269,7 @@ func (c *ConfigManager) CreateBareMetalHost(ctx context.Context) error {
 
 // storeBootstrapData creates a new secret with the data passed in as input,
 // sets the reference in the configuration status and ready to true.
-func (c *ConfigManager) storeBootstrapData(ctx context.Context, data []byte) error {
+func (c *ConfigManager) storeBootstrapData(ctx context.Context, data []byte) (string, error) {
 	c.Log.Info("Store the Bootstrap data", "ready", c.NodeConfig.Status.Ready, "secret", c.NodeConfig.Status.DataSecretName)
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -289,16 +291,16 @@ func (c *ConfigManager) storeBootstrapData(ctx context.Context, data []byte) err
 	}
 
 	if err := c.client.Create(ctx, secret); err != nil {
-		return errors.Wrapf(err, "failed to create bootstrap data secret for NodeConfig %s/%s", c.NodeConfig.Namespace, c.NodeConfig.Name)
+		return "", errors.Wrapf(err, "failed to create bootstrap data secret for NodeConfig %s/%s", c.NodeConfig.Namespace, c.NodeConfig.Name)
 	}
 
-	c.NodeConfig.Status.Ready = true
-	c.NodeConfig.Status.UserData = &corev1.SecretReference{
-		Name:      secret.Name,
-		Namespace: secret.Namespace,
-	}
+	//Deprecated -> changing code position
+	// c.NodeConfig.Status.UserData = &corev1.SecretReference{
+	// 	Name:      secret.Name,
+	// 	Namespace: secret.Namespace,
+	// }
 	// scope.Info("ESLEE_TMP: Store the Bootstrap data - success!", "status.secret", scope.Config.Status.DataSecretName, "status.ready", scope.Config.Status.Ready)
-	return nil
+	return secret.Name, nil
 }
 
 // storeBMHCredentials creates a new secret with the BMH data passed in as input
@@ -331,33 +333,36 @@ func (c *ConfigManager) storeBMHCredentials(ctx context.Context, bmhost *bmh.Bar
 	return nil
 }
 
+// Deprecated: v0.0.3
 // ensureAnnotation makes sure the config has an annotation that references the
 // host and uses the API to update the config if necessary.
 func (c *ConfigManager) EnsureAnnotation(ctx context.Context) error { //, host *bmh.BareMetalHost) error {
-	hostKey := c.NodeConfig.ObjectMeta.GetNamespace() + "/" + c.NodeConfig.ObjectMeta.GetName() //	GetAnnotations()
-	annotations := make(map[string]string)
-	existing, ok := annotations[HostAnnotation]
-	if ok {
-		if existing == hostKey {
-			return nil
-		}
-		c.Log.Info("Warning: found stray annotation for host on machine. Overwriting.", "host", existing)
-	}
-	annotations[HostAnnotation] = hostKey
-	c.NodeConfig.ObjectMeta.SetAnnotations(annotations)
+	// hostKey := c.NodeConfig.ObjectMeta.GetNamespace() + "/" + c.NodeConfig.ObjectMeta.GetName() //	GetAnnotations()
+	// annotations := make(map[string]string)
+	// existing, ok := annotations[HostAnnotation]
+	// if ok {
+	// 	if existing == hostKey {
+	// 		return nil
+	// 	}
+	// 	c.Log.Info("Warning: found stray annotation for host on machine. Overwriting.", "host", existing)
+	// }
+	// annotations[HostAnnotation] = hostKey
+	// c.NodeConfig.ObjectMeta.SetAnnotations(annotations)
 
 	// c.Log.Info("ESLEE_TMP: set annotation", "key", hostKey, "val", annotations)
 	return nil
 }
 
+// Deprecated: v0.0.3
 // HasAnnotation makes sure the nodeconfig has an annotation that references a host
 func (c *ConfigManager) HasAnnotation() bool {
-	annotations := c.NodeConfig.ObjectMeta.GetAnnotations()
-	if annotations == nil {
-		return false
-	}
-	_, ok := annotations[HostAnnotation]
-	return ok
+	// annotations := c.NodeConfig.ObjectMeta.GetAnnotations()
+	// if annotations == nil {
+	// 	return false
+	// }
+	// _, ok := annotations[HostAnnotation]
+	// return ok
+	return true
 }
 
 // SetError sets the ErrorMessage and ErrorReason fields on the machine and logs
