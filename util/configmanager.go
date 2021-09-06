@@ -121,16 +121,16 @@ func (c *ConfigManager) Associate(ctx context.Context) error {
 // on the machine that contains a reference to the host.
 func (c *ConfigManager) FindHost(ctx context.Context) (*bmh.BareMetalHost, bool) {
 	// ESLEE: todo - error 발생했으면 status에 찍을 것인가
-	if host, err := getHost(ctx, c.NodeConfig, c.client, c.Log); err == nil {
+	if host, err := getHost(ctx, c.NodeConfig, c.client, c.Log); err != nil {
+		c.Log.Error(err, "ESLEE_tmp: unexpected err")
+	} else if host != nil {
 		provState := host.Status.Provisioning.State
-		if provState == "ready" || provState == "inspecting" ||
+		if (provState == "ready" || provState == "inspecting" ||
 			provState == "registering" || provState == "match profile" ||
-			provState == "available" {
+			provState == "available") && host.Status.OperationalStatus == "OK" {
 			return host, true
 		}
 		return host, false
-	} else {
-		c.Log.Error(err, "ESLEE_tmp: unexpected err")
 	}
 	return nil, false
 }
