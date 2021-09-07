@@ -84,9 +84,10 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	config := &bootstrapv1.NodeConfig{}
 	if err := r.Client.Get(ctx, req.NamespacedName, config); err != nil {
 		if apierrors.IsNotFound(err) {
+			log.Info("Can't find the NodeConfig. expected to be deleted")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "failed to get config")
+		log.Info("Unknown: Can't find the NodeConfig")
 		return ctrl.Result{}, err
 	}
 
@@ -96,25 +97,24 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, nil
 	}
 
-	// Initialize the patch helper.
-	patchHelper, err := patch.NewHelper(config, r.Client)
-	if err != nil {
-		return ctrl.Result{}, errors.Wrap(err, "failed to init patch helper")
-	}
-	// Always patch nodeconfig exiting this function so we can persist any nodeconfig changes.
-	defer func() {
-		log.Info("Patch NodeConfig at last~!")
-		err := patchHelper.Patch(ctx, config)
-		if err != nil {
-			log.Info("failed to Patch nodeconfig")
-		}
-	}()
-
 	// Create a helper for managing the baremetal container hosting the machine.
 	configMgr, err := r.ConfigManager.NewConfigManager(r.Client, config, log)
 	if err != nil {
 		return ctrl.Result{}, errors.Wrapf(err, "failed to create helper for managing the configMgr")
 	}
+
+	// // Initialize the patch helper.
+	patchHelper, err := patch.NewHelper(config, r.Client)
+	if err != nil {
+		return ctrl.Result{}, errors.Wrap(err, "failed to init patch helper")
+	}
+	// // Always patch nodeconfig exiting this function so we can persist any nodeconfig changes.
+	// defer func() {
+	// 	log.Info("Patch NodeConfig at last~!", "NodeConfig", config.Status)
+	// 	if err := patchHelper.Patch(ctx, configMgr.NodeConfig); err != nil {
+	// 		log.Info("failed to Patch nodeconfig")
+	// 	}
+	// }()
 
 	// Deprecate the way of finding BMH with using annotation
 	// Check if the nodeconfig was associated with a baremetalhost
@@ -131,16 +131,16 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if err != nil {
 		log.Info("failed to create a NodeConfig!", "err_mgs", err.Error())
 		return ctrl.Result{}, err
-	} else {
-		// Set secret reference
-		config.Status.UserData = &corev1.SecretReference{
-			Name:      cloudinitName,
-			Namespace: config.Namespace,
-		}
-		// if err := patchHelper.Patch(ctx, config); err != nil {
-		// 	log.Info("failed to nodeconfig patch referencing cloudinit secret")
-		// 	return ctrl.Result{}, err
-		// }
+	}
+	// Set secret reference
+	config.Status.UserData = &corev1.SecretReference{
+		Name:      cloudinitName,
+		Namespace: config.Namespace,
+	}
+	config.Status.Ready = true
+	if err := patchHelper.Patch(ctx, config); err != nil {
+		log.Info("failed to nodeconfig patch referencing cloudinit secret")
+		return ctrl.Result{}, err
 	}
 
 	// Skip the association
@@ -165,10 +165,20 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	//Associate the baremetalhost hosting the machine
-	if err = configMgr.Associate(ctx); err != nil {
+	// ctx.NodeConfig = config
+	if err = configMgr.Associate(ctx, config); err != nil {
 		return ctrl.Result{}, errors.Wrapf(err, "failed to associate the NodeConfig to a BaremetalHost")
 	}
-	config.Status.Ready = true
+
+	// config.Status.UserData = &corev1.SecretReference{
+	// 	Name:      cloudinitName,
+	// 	Namespace: config.Namespace,
+	// }
+	// config.Status.Ready = true
+	// if err := patchHelper.Patch(ctx, config); err != nil {
+	// 	log.Info("failed to nodeconfig patch referencing cloudinit secret")
+	// 	return ctrl.Result{}, err
+	// }
 
 	r.Log.Info("End nodeconfig operator reconcile")
 

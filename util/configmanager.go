@@ -65,10 +65,9 @@ func (c *ConfigManager) NewConfigManager(client client.Client,
 
 // Associate associates the nodeconfig with the baremetal machine
 // It's invoked by the Config Controller
-func (c *ConfigManager) Associate(ctx context.Context) error {
+func (c *ConfigManager) Associate(ctx context.Context, nConfig *bootstrapv1.NodeConfig) error {
 	c.Log.Info("Associating nodeconfig", "nodeconfig", c.NodeConfig.Name)
-
-	// load and validate the config
+	// just... exception handling
 	if c.NodeConfig == nil {
 		// Should have been picked earlier. Do not requeue
 		return nil
@@ -94,10 +93,14 @@ func (c *ConfigManager) Associate(ctx context.Context) error {
 	c.Log.Info("Success to get host for association!")
 
 	// Assign node configs(cloud init) to the BMH
-	if err = c.setHostSpec(ctx, bmhost); err != nil {
+	if err = c.setHostSpec(bmhost, c.NodeConfig); err != nil {
 		c.SetError(err.Error())
+		return err
+	} else if err = bmhHelper.Patch(ctx, bmhost); err != nil {
+		return err
 	}
-	c.Log.Info("Success to set host (Image, userData) for association!", "Image", bmhost.Spec.Image)
+	c.Log.Info("Success to set host (Image, userData) for association!",
+		"Image", bmhost.Spec.Image)
 
 	// Add owner reference to the BMH
 	c.NodeConfig.ObjectMeta.SetOwnerReferences(
@@ -108,11 +111,6 @@ func (c *ConfigManager) Associate(ctx context.Context) error {
 				Name:       bmhost.Name,
 				UID:        bmhost.UID,
 			}))
-
-	err = bmhHelper.Patch(ctx, bmhost)
-	if err != nil {
-		return err
-	}
 
 	c.Log.Info("Finished associating machine", "BMH.status", bmhost.Status)
 	return nil
@@ -150,24 +148,10 @@ func (c *ConfigManager) getHost(ctx context.Context) (*bmh.BareMetalHost, *patch
 
 func getHost(ctx context.Context, nConfig *bootstrapv1.NodeConfig,
 	cl client.Client, mLog logr.Logger) (*bmh.BareMetalHost, error) {
-	// mLog.Info("ESLEE: Start to find host")
-	// annotations := nConfig.ObjectMeta.GetAnnotations()
-	// if annotations == nil {
-	// 	return nil, nil
-	// }
-	// hostKey, ok := annotations[HostAnnotation]
-	// if !ok {
-	// 	// mLog.Info("ESLEE: no metal3/baremetalhost annotation")
-	// 	return nil, nil
-	// }
-	// hostNamespace, hostName, err := cache.SplitMetaNamespaceKey(hostKey)
-	// if err != nil {
-	// 	mLog.Error(err, "Error parsing annotation value", "annotation key", hostKey)
-	// 	return nil, err
-	// }
+	// Set BMH search key
 	hostNamespace, hostName := nConfig.Namespace, nConfig.Name
 
-	// mLog.Info("ESLEE_TMP: Where's my BMH")
+	// mLog.Info("ESLEE: Start to find host")
 	host := bmh.BareMetalHost{}
 	key := client.ObjectKey{
 		Name:      hostName,
@@ -184,7 +168,7 @@ func getHost(ctx context.Context, nConfig *bootstrapv1.NodeConfig,
 }
 
 // details. It will then update the host via the kube API.
-func (c *ConfigManager) setHostSpec(ctx context.Context, host *bmh.BareMetalHost) error {
+func (c *ConfigManager) setHostSpec(host *bmh.BareMetalHost, nConfig *bootstrapv1.NodeConfig) error {
 	// Not provisioning while we do not have the UserData and images
 	if host.Spec.Image == nil && c.NodeConfig.Status.UserData != nil {
 		host.Spec.Image = &bmh.Image{
@@ -198,10 +182,10 @@ func (c *ConfigManager) setHostSpec(ctx context.Context, host *bmh.BareMetalHost
 		if host.Spec.UserData != nil && host.Spec.UserData.Namespace == "" {
 			host.Spec.UserData.Namespace = host.Namespace
 		}
-		// c.Log.Info("ESLEE_TMP: set BMH", "userdata", host.Spec.UserData)
+		// c.Log.Info("set BMH", "userdata", host.Spec.UserData)
 	}
 
-	// c.Log.Info("ESLEE_tmp: provisioning state", "bmh-state", host.Status.Provisioning.State)
+	// Start to provisioning only when BMH provisioning state is 'ready'
 	if host.Status.Provisioning.State == "ready" {
 		host.Spec.Online = true
 	}
@@ -250,28 +234,36 @@ func (c *ConfigManager) CreateBareMetalHost(ctx context.Context) error {
 	bmhost.ObjectMeta.Name = c.NodeConfig.Name
 	bmhost.ObjectMeta.Namespace = c.NodeConfig.Namespace
 	bmhost.Spec.Online = false
+	bmhost.Spec.BootMode = bmh.BootMode(c.NodeConfig.BootMode())
 	bmhost.Spec.BMC.Address = c.NodeConfig.Spec.BMC.Address
 	bmhost.Spec.BMC.CredentialsName = c.NodeConfig.Name + "-bmc-secret"
-	bmhost.Spec.BootMode = bmh.BootMode(c.NodeConfig.BootMode())
 	bmhost.Spec.BMC.DisableCertificateVerification = true
 
-	// c.Log.Info("ESLEE: BMH info test", "bmhost", bmhost.Spec)
-
-	if err := c.client.Create(ctx, bmhost); err != nil {
-		return errors.Wrapf(err, "failed to create BareMetalHost")
-	}
-
-	if err := c.storeBMHCredentials(ctx, bmhost); err != nil {
+	// Create BMH-credential (BMC info)
+	if secret, err := c.storeBMHCredentials(ctx, bmhost); err != nil {
 		c.Log.Error(err, "failed to store BMC credentials")
 		return err
+	} else {
+		// Create BMH
+		if err := c.client.Create(ctx, bmhost); err != nil {
+			return errors.Wrapf(err, "failed to create BareMetalHost")
+		}
+		// Set owner reference (the BMH owns BMC-credential)
+		if err := c.setBMHCredentialsOwner(ctx, bmhost, secret); err != nil {
+			c.Log.Info("failed to set BMC-credential owner")
+			return err
+		}
 	}
+
+	c.Log.Info("Success to create BMH",
+		"BMH.spec", bmhost.Spec, "BMH.status", bmhost.Status)
 	return nil
 }
 
 // storeBootstrapData creates a new secret with the data passed in as input,
 // sets the reference in the configuration status and ready to true.
 func (c *ConfigManager) storeBootstrapData(ctx context.Context, data []byte) (string, error) {
-	c.Log.Info("Store the Bootstrap data", "ready", c.NodeConfig.Status.Ready, "secret", c.NodeConfig.Status.DataSecretName)
+	c.Log.Info("Store the Bootstrap data", "secret", c.NodeConfig.Status.DataSecretName)
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      c.NodeConfig.Name,
@@ -304,22 +296,35 @@ func (c *ConfigManager) storeBootstrapData(ctx context.Context, data []byte) (st
 	return secret.Name, nil
 }
 
+func (c *ConfigManager) setBMHCredentialsOwner(ctx context.Context, bmhost *bmh.
+	BareMetalHost, secret *corev1.Secret) error {
+	secret.OwnerReferences = []metav1.OwnerReference{
+		{
+			APIVersion: bmh.GroupVersion.String(),
+			Kind:       "BareMetalHost",
+			Name:       bmhost.Name,
+			UID:        bmhost.UID,
+			Controller: pointer.BoolPtr(true),
+		},
+	}
+
+	if helper, err := patch.NewHelper(secret, c.client); err != nil {
+		c.Log.Error(err, "Unknown error: fail to create helper")
+		// return err
+	} else if err = helper.Patch(ctx, secret); err != nil {
+		c.Log.Info("Fail to patch BMH credential")
+		return err
+	}
+	return nil
+}
+
 // storeBMHCredentials creates a new secret with the BMH data passed in as input
-func (c *ConfigManager) storeBMHCredentials(ctx context.Context, bmhost *bmh.BareMetalHost) error {
+func (c *ConfigManager) storeBMHCredentials(ctx context.Context, bmhost *bmh.BareMetalHost) (*corev1.Secret, error) {
 	c.Log.Info("Store the BMC secret", "BMC", c.NodeConfig.Spec.BMC)
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      c.NodeConfig.Name + "-bmc-secret",
 			Namespace: c.NodeConfig.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion: bmh.GroupVersion.String(),
-					Kind:       "BareMetalHost",
-					Name:       bmhost.Name,
-					UID:        bmhost.UID,
-					Controller: pointer.BoolPtr(true),
-				},
-			},
 		},
 		Type: "Opaque",
 		Data: map[string][]byte{
@@ -329,9 +334,9 @@ func (c *ConfigManager) storeBMHCredentials(ctx context.Context, bmhost *bmh.Bar
 	}
 
 	if err := c.client.Create(ctx, secret); err != nil {
-		return errors.Wrapf(err, "failed to create BMC secret for BareMetalHost %s/%s", c.NodeConfig.Namespace, c.NodeConfig.Name)
+		return nil, errors.Wrapf(err, "failed to create BMC secret for BareMetalHost %s/%s", c.NodeConfig.Namespace, c.NodeConfig.Name)
 	}
-	return nil
+	return secret, nil
 }
 
 // Deprecated: v0.0.3
