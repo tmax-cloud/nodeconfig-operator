@@ -91,12 +91,13 @@ func (c *ConfigManager) Associate(ctx context.Context) error {
 		c.SetError("Failed to get the BaremetalHost for the NodeConfig")
 		return err
 	}
+	c.Log.Info("Success to get host for association!")
 
-	c.Log.Info("Get host success!", "part", bmhost.Status)
 	// Assign node configs(cloud init) to the BMH
 	if err = c.setHostSpec(ctx, bmhost); err != nil {
 		c.SetError(err.Error())
 	}
+	c.Log.Info("Success to set host (Image, userData) for association!")
 
 	// Add owner reference to the BMH
 	c.NodeConfig.ObjectMeta.SetOwnerReferences(
@@ -113,7 +114,7 @@ func (c *ConfigManager) Associate(ctx context.Context) error {
 		return err
 	}
 
-	c.Log.Info("Finished associating machine")
+	c.Log.Info("Finished associating machine", "BMH.status", bmhost.Status)
 	return nil
 }
 
