@@ -97,7 +97,7 @@ func (c *ConfigManager) Associate(ctx context.Context) error {
 	if err = c.setHostSpec(ctx, bmhost); err != nil {
 		c.SetError(err.Error())
 	}
-	c.Log.Info("Success to set host (Image, userData) for association!")
+	c.Log.Info("Success to set host (Image, userData) for association!", "Image", bmhost.Spec.Image)
 
 	// Add owner reference to the BMH
 	c.NodeConfig.ObjectMeta.SetOwnerReferences(

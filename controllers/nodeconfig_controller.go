@@ -103,6 +103,7 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 	// Always patch nodeconfig exiting this function so we can persist any nodeconfig changes.
 	defer func() {
+		log.Info("Patch NodeConfig at last~!")
 		err := patchHelper.Patch(ctx, config)
 		if err != nil {
 			log.Info("failed to Patch nodeconfig")
@@ -136,10 +137,10 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			Name:      cloudinitName,
 			Namespace: config.Namespace,
 		}
-		if err := patchHelper.Patch(ctx, config); err != nil {
-			log.Info("failed to nodeconfig patch referencing cloudinit secret")
-			return ctrl.Result{}, err
-		}
+		// if err := patchHelper.Patch(ctx, config); err != nil {
+		// 	log.Info("failed to nodeconfig patch referencing cloudinit secret")
+		// 	return ctrl.Result{}, err
+		// }
 	}
 
 	// Skip the association
@@ -167,6 +168,9 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if err = configMgr.Associate(ctx); err != nil {
 		return ctrl.Result{}, errors.Wrapf(err, "failed to associate the NodeConfig to a BaremetalHost")
 	}
+	config.Status.Ready = true
+
+	r.Log.Info("End nodeconfig operator reconcile")
 
 	return ctrl.Result{}, nil
 }
