@@ -23,6 +23,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
+
 	"github.com/tmax-cloud/nodeconfig-operator/util"
 
 	corev1 "k8s.io/api/core/v1"
@@ -31,7 +32,6 @@ import (
 	"sigs.k8s.io/cluster-api/util/patch"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-
 	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 
 	bootstrapv1 "github.com/tmax-cloud/nodeconfig-operator/api/v1alpha1"
@@ -64,6 +64,7 @@ func (r *NodeConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 // Add RBAC rules to access cluster-api resources
 //+kubebuilder:rbac:groups=metal3.io,resources=baremetalhosts,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=metal3.io,resources=baremetalhosts/spec,verbs=get;update;patch
 //+kubebuilder:rbac:groups=metal3.io,resources=baremetalhosts/status,verbs=get;update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -84,7 +85,7 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	config := &bootstrapv1.NodeConfig{}
 	if err := r.Client.Get(ctx, req.NamespacedName, config); err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Info("Can't find the NodeConfig. expected to be deleted")
+			log.Info("Can't find the NodeConfig. maybe it was deleted")
 			return ctrl.Result{}, nil
 		}
 		log.Info("Unknown: Can't find the NodeConfig")
@@ -92,95 +93,77 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	// Do nothing if the state of NC is already 'ready'
+	// log.Info("NC status check", "NC.Status.Ready", config.Status.Ready)
 	if config.Status.Ready {
-		log.Info("The work related to NodeConfig %s has already completed", config.Name)
+		log.Info("The work related to NodeConfig has already completed", "config name", config.Name)
 		return ctrl.Result{}, nil
 	}
 
 	// Create a helper for managing the baremetal container hosting the machine.
 	configMgr, err := r.ConfigManager.NewConfigManager(r.Client, config, log)
 	if err != nil {
-		return ctrl.Result{}, errors.Wrapf(err, "failed to create helper for managing the configMgr")
+		return ctrl.Result{}, errors.Wrapf(err, "Failed to create helper for managing the configMgr")
 	}
 
-	// // Initialize the patch helper.
+	// Initialize the patch helper.
 	patchHelper, err := patch.NewHelper(config, r.Client)
 	if err != nil {
 		return ctrl.Result{}, errors.Wrap(err, "failed to init patch helper")
 	}
 	// // Always patch nodeconfig exiting this function so we can persist any nodeconfig changes.
-	// defer func() {
-	// 	log.Info("Patch NodeConfig at last~!", "NodeConfig", config.Status)
-	// 	if err := patchHelper.Patch(ctx, configMgr.NodeConfig); err != nil {
-	// 		log.Info("failed to Patch nodeconfig")
-	// 	}
-	// }()
-
-	// Deprecate the way of finding BMH with using annotation
-	// Check if the nodeconfig was associated with a baremetalhost
-	// if !configMgr.HasAnnotation() {
-	// 	err := configMgr.EnsureAnnotation(ctx)
-	// 	if err != nil {
-	// 		configMgr.SetError("failed to annotate the NodeConfig")
-	// 		return ctrl.Result{}, err
-	// 	}
-	// }
+	defer func() {
+		if err := patchHelper.Patch(ctx, configMgr.NodeConfig); err != nil {
+			log.Info("failed to Patch nodeconfig")
+		}
+		log.Info("End nodeconfig operator reconcile", "NodeConfig.Status", configMgr.NodeConfig.Status)
+	}()
 
 	// Create CloudInit data as nodeinitconfig
-	cloudinitName, err := configMgr.CreateNodeInitConfig(ctx)
-	if err != nil {
-		log.Info("failed to create a NodeConfig!", "err_mgs", err.Error())
+	if cloudinitName, err := configMgr.CreateNodeInitConfig(ctx); err != nil {
+		configMgr.SetError("Failed to create a cloudinit config")
 		return ctrl.Result{}, err
+	} else {
+		// Set secret reference
+		configMgr.NodeConfig.Status.UserData = &corev1.SecretReference{
+			Name:      cloudinitName,
+			Namespace: config.Namespace,
+		}
 	}
-	// Set secret reference
-	config.Status.UserData = &corev1.SecretReference{
-		Name:      cloudinitName,
-		Namespace: config.Namespace,
-	}
-	config.Status.Ready = true
-	if err := patchHelper.Patch(ctx, config); err != nil {
-		log.Info("failed to nodeconfig patch referencing cloudinit secret")
-		return ctrl.Result{}, err
-	}
-
-	// Skip the association
-	// if config.ObjectMeta.OwnerReferences != nil {
-	// 	// log.Info("ESLEE_TMP: already associated", "ownerRef", config.ObjectMeta.OwnerReferences)
-	// 	return ctrl.Result{}, nil
-	// }
 
 	// Create the BareMetalHost CR
 	if bmh, isAvail := configMgr.FindHost(ctx); bmh == nil {
-		log.Info("failed to found the target BMH. Now create a BareMetalHost")
+		log.Info("The BMH looking for was not found. Now create a BMH")
 		if err := configMgr.CreateBareMetalHost(ctx); err != nil {
-			log.Info("failed to create a BareMetalHost!", "err_mgs", err.Error())
+			configMgr.SetError("Failed to create BareMetalHost")
 			return ctrl.Result{}, err
 		}
 	} else if !isAvail {
+		configMgr.SetError("The found BareMetalHost is not available. " +
+			"BMH.provisioning.state: " + string(bmh.Status.Provisioning.State))
 		// Delete the NodeConfig
+		log.Info("The found BareMetalHost is not available. Delete the nodeconfig")
+
+		if err := r.Client.Delete(ctx, bmh); err != nil {
+			return ctrl.Result{}, errors.Wrapf(err, "Failed to delete the BMH %s/%s", config.Namespace, config.Name)
+		}
 		if err := r.Client.Delete(ctx, config); err != nil {
-			return ctrl.Result{}, errors.Wrapf(err, "failed to delete the NodeConfig %s/%s", config.Namespace, config.Name)
+			return ctrl.Result{}, errors.Wrapf(err, "Failed to delete the NodeConfig %s/%s", config.Namespace, config.Name)
 		}
 		return ctrl.Result{}, nil
 	}
 
-	//Associate the baremetalhost hosting the machine
-	// ctx.NodeConfig = config
+	// Associate the baremetalhost hosting the machine
 	if err = configMgr.Associate(ctx, config); err != nil {
-		return ctrl.Result{}, errors.Wrapf(err, "failed to associate the NodeConfig to a BaremetalHost")
+		configMgr.SetError("Failed to associate the NodeConfig to a BaremetalHost")
+		return ctrl.Result{}, errors.Wrapf(err, "Failed to associate the NodeConfig to a BaremetalHost")
 	}
 
-	// config.Status.UserData = &corev1.SecretReference{
-	// 	Name:      cloudinitName,
-	// 	Namespace: config.Namespace,
-	// }
-	// config.Status.Ready = true
-	// if err := patchHelper.Patch(ctx, config); err != nil {
-	// 	log.Info("failed to nodeconfig patch referencing cloudinit secret")
-	// 	return ctrl.Result{}, err
-	// }
-
-	r.Log.Info("End nodeconfig operator reconcile")
+	configMgr.NodeConfig.Status.Ready = true
+	// Initialize the patch helper.
+	if err := patchHelper.Patch(ctx, config); err != nil {
+		log.Info("Failed to patch the nodeconfig")
+		return ctrl.Result{}, err
+	}
 
 	return ctrl.Result{}, nil
 }
