@@ -1,4 +1,4 @@
-# NodeConfig Operator controlflow
+# NodeConfig Operator controlflow - v0.0.3
 ![NodeConfig Operator Activity Diagram](activity_diagram.png)
 
 ## scenario #1 
