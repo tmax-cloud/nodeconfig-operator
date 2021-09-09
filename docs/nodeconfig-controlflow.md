@@ -13,7 +13,7 @@
 ## scenario #2 
 **[정상]** BareMetalHost(BMH) CR이 이미 등록되어있고 사용 가능
 * Available BMH condition (provisioning state) - NodeConfig association 가능
-  * cready`: node provisioning 시작할 준비가 끝남
+  * `ready`: node provisioning 시작할 준비가 끝남
   * `registering`: BMC detail 유효성 검사 (통신 가능 여부)
   * `inspecting`: BMC 소켓 통신으로 하드웨어 인벤토리 조사중
   * `match profile`: 하드웨어 인벤토리 유효성 검사
