@@ -110,7 +110,7 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if err != nil {
 		return ctrl.Result{}, errors.Wrap(err, "failed to init patch helper")
 	}
-	// // Always patch nodeconfig exiting this function so we can persist any nodeconfig changes.
+	// Always patch nodeconfig exiting this function so we can persist any nodeconfig changes.
 	defer func() {
 		if err := patchHelper.Patch(ctx, configMgr.NodeConfig); err != nil {
 			log.Info("failed to Patch nodeconfig")
@@ -159,7 +159,6 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	configMgr.NodeConfig.Status.Ready = true
-	// Initialize the patch helper.
 	if err := patchHelper.Patch(ctx, config); err != nil {
 		log.Info("Failed to patch the nodeconfig")
 		return ctrl.Result{}, err
