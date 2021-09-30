@@ -17,7 +17,12 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"fmt"
+	"os/exec"
+	"strings"
+
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -33,9 +38,7 @@ func (r *NodeConfig) SetupWebhookWithManager(mgr ctrl.Manager) error {
 }
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-
-//+kubebuilder:webhook:path=/mutate-bootstrap-tmax-io-v1alpha1-nodeconfig,mutating=true,failurePolicy=fail,sideEffects=None,groups=bootstrap.tmax.io,resources=nodeconfigs,verbs=create;update,versions=v1alpha1,name=mnodeconfig.kb.io,admissionReviewVersions={v1,v1beta1}
-
+//kubebuilder:webhook:path=/mutate-bootstrap-tmax-io-v1alpha1-nodeconfig,mutating=true,failurePolicy=fail,sideEffects=None,groups=bootstrap.tmax.io,resources=nodeconfigs,verbs=create;update,versions=v1alpha1,name=mnodeconfig.kb.io,admissionReviewVersions={v1,v1beta1}
 var _ webhook.Defaulter = &NodeConfig{}
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
@@ -53,8 +56,26 @@ var _ webhook.Validator = &NodeConfig{}
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *NodeConfig) ValidateCreate() error {
 	nodeconfiglog.Info("validate create", "name", r.Name)
+	var errs []error
 
-	// TODO(user): fill in your validation logic upon object creation.
+	if r.Spec.Image == nil || r.Spec.Image.Checksum == "" {
+		errs = append(errs, fmt.Errorf("image value not set"))
+		return errors.NewAggregate(errs)
+	}
+	if r.Spec.BMC == nil {
+		errs = append(errs, fmt.Errorf("BMC value not set"))
+		return errors.NewAggregate(errs)
+	}
+
+	if err := r.os_image_validation(r.Spec.Image.URL, r.Spec.Image.Checksum); err != nil {
+		errs = append(errs, err)
+		return errors.NewAggregate(errs)
+	}
+	if err := r.bmc_validation(r.Spec.BMC); err != nil {
+		errs = append(errs, err)
+		return errors.NewAggregate(errs)
+	}
+
 	return nil
 }
 
@@ -71,5 +92,36 @@ func (r *NodeConfig) ValidateDelete() error {
 	nodeconfiglog.Info("validate delete", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.
+	return nil
+}
+
+func (r *NodeConfig) os_image_validation(image_url string, checksum_url string) error {
+	cmd := exec.Command("curl", checksum_url)
+	stdout, err := cmd.Output()
+	slices := strings.Split(string(stdout[:]), " ")
+
+	if err != nil {
+		return err
+	}
+	if len(slices) != 3 {
+		return fmt.Errorf("checksum format error")
+	}
+	if !strings.Contains(image_url, strings.TrimSpace(string(slices[2]))) {
+		return fmt.Errorf("checksum is different from image name")
+	}
+	return nil
+}
+
+func (r *NodeConfig) bmc_validation(bmc_info *BMC) error {
+	bmc_addr := bmc_info.Address  // "192.168.111.204"
+	bmc_user := bmc_info.Username // "USERID"
+	bmc_pwd := bmc_info.Password  // "PASSW0RD"
+
+	cmd := exec.Command("ipmitool", "-I", "lanplus", "-H", bmc_addr, "-U", bmc_user, "-P", bmc_pwd, "power", "status")
+	if stdout, err := cmd.Output(); err != nil {
+		return fmt.Errorf("failed to BMC validation. check the BMC address or account")
+	} else if !strings.Contains(string(stdout), "Chassis Power") {
+		return fmt.Errorf("unknown error. IPMI connection failed")
+	}
 	return nil
 }

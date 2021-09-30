@@ -13,4 +13,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: 192.168.2.242:32500/nc-operator
-  newTag: v0.0.2
+  newTag: v0.0.4

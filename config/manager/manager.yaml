@@ -12,6 +12,7 @@ metadata:
   namespace: system
   labels:
     control-plane: controller-manager
+    webhook: metal3-io-v1alpha1-nodeconfig
 spec:
   selector:
     matchLabels:
@@ -21,6 +22,7 @@ spec:
     metadata:
       labels:
         control-plane: controller-manager
+        webhook: metal3-io-v1alpha1-nodeconfig
     spec:
       securityContext:
         runAsNonRoot: true
