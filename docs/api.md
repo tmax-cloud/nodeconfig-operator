@@ -1,7 +1,9 @@
 # API and Resource Definitions
 
 ## NodeConfig
-Main responsibility of NCO(NodeConfig Operator) is to convert a **NodeConfig** bootstrap object into a cloud-init script that is going to turn a Baremetal Machine into a Legacy Node.
+Main responsibility of NCO(NodeConfig Operator) is to convert a **NodeConfig** bootstrap object into a cloud-init script that is going to turn a Baremetal Machine into a Linux Node.
+
+The NodeConfig contains the node initialization data (usually cloud-init) used by the Infrastructure Provider to bootstrap a bare-metal into a Node.
 
 The cloud-init script will be saved into the NodeConfig.Status.BootstrapData and then the BMO(BareMetal Operator) will pick up this value and proceed with the machine creation and the actual bootstrap.
 
