@@ -1,0 +1,620 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    control-plane: controller-manager
+  name: metal3
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    cert-manager.io/inject-ca-from: metal3/nodeconfig-serving-cert
+    controller-gen.kubebuilder.io/version: v0.4.1
+  name: nodeconfigs.bootstrap.tmax.io
+spec:
+  group: bootstrap.tmax.io
+  names:
+    kind: NodeConfig
+    listKind: NodeConfigList
+    plural: nodeconfigs
+    singular: nodeconfig
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: NodeConfig is the Schema for the nodeconfigs API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: NodeConfigSpec defines the desired state of NodeConfig
+            properties:
+              bmc:
+                description: BMC specifies the BMC configuration
+                properties:
+                  address:
+                    description: Address holds the URL for accessing the controller
+                      on the network.
+                    type: string
+                  bootMACAddress:
+                    description: Which MAC address will PXE boot? This is optional
+                      for some types, but required for libvirt VMs driven by vbmc.
+                    pattern: '[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){5}'
+                    type: string
+                  bootMode:
+                    description: Select the method of initializing the hardware during
+                      boot. Defaults to UEFI.
+                    enum:
+                    - UEFI
+                    - legacy
+                    type: string
+                  password:
+                    type: string
+                  username:
+                    description: ID/PW for authenticating with the BMC
+                    type: string
+                required:
+                - address
+                - password
+                - username
+                type: object
+              cloudInitCommands:
+                description: CloudInitCommands specifies extra commands to run after
+                  systemd
+                items:
+                  type: string
+                type: array
+              files:
+                description: Files specifies extra files to be passed to user_data
+                  upon creation.
+                items:
+                  description: File defines the input for generating write_files in
+                    cloud-init.
+                  properties:
+                    content:
+                      description: Content is the actual content of the file.
+                      type: string
+                    encoding:
+                      description: Encoding specifies the encoding of the file contents.
+                      enum:
+                      - base64
+                      - gzip
+                      - gzip+base64
+                      type: string
+                    owner:
+                      description: Owner specifies the ownership of the file, e.g.
+                        "root:root".
+                      type: string
+                    path:
+                      description: Path specifies the full path on disk where to store
+                        the file.
+                      type: string
+                    permissions:
+                      description: Permissions specifies the permissions to assign
+                        to the file, e.g. "0640".
+                      type: string
+                  required:
+                  - content
+                  - path
+                  type: object
+                type: array
+              image:
+                description: Image holds the details of the image to be provisioned.
+                properties:
+                  checksum:
+                    description: Checksum is the checksum for the image.
+                    type: string
+                  checksumType:
+                    description: ChecksumType is the checksum algorithm for the image.
+                      e.g md5, sha256, sha512
+                    enum:
+                    - md5
+                    - sha256
+                    - sha512
+                    type: string
+                  url:
+                    description: URL is a location of an image to deploy.
+                    type: string
+                required:
+                - checksum
+                - url
+                type: object
+              ntp:
+                description: NTP specifies NTP configuration
+                properties:
+                  enabled:
+                    description: Enabled specifies whether NTP should be enabled
+                    type: boolean
+                  servers:
+                    description: Servers specifies which NTP servers to use
+                    items:
+                      type: string
+                    type: array
+                type: object
+              users:
+                description: Users specifies extra users to add
+                items:
+                  description: User defines the input for a generated user in cloud-init.
+                  properties:
+                    gecos:
+                      description: Gecos specifies the gecos to use for the user
+                      type: string
+                    groups:
+                      description: Groups specifies the additional groups for the
+                        user
+                      type: string
+                    homeDir:
+                      description: HomeDir specifies the home directory to use for
+                        the user
+                      type: string
+                    inactive:
+                      description: Inactive specifies whether to mark the user as
+                        inactive
+                      type: boolean
+                    lockPassword:
+                      description: LockPassword specifies if password login should
+                        be disabled
+                      type: boolean
+                    name:
+                      description: Name specifies the user name
+                      type: string
+                    passwd:
+                      description: Passwd specifies a hashed password for the user
+                      type: string
+                    primaryGroup:
+                      description: PrimaryGroup specifies the primary group for the
+                        user
+                      type: string
+                    shell:
+                      description: Shell specifies the user's shell
+                      type: string
+                    sshAuthorizedKeys:
+                      description: SSHAuthorizedKeys specifies a list of ssh authorized
+                        keys for the user
+                      items:
+                        type: string
+                      type: array
+                    sudo:
+                      description: Sudo specifies a sudo role for the user
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+            required:
+            - bmc
+            - image
+            type: object
+          status:
+            description: NodeConfigStatus defines the observed state of NodeConfig
+            properties:
+              dataSecretName:
+                description: DataSecretName is the name of the secret that stores
+                  the bootstrap data script.
+                type: string
+              failureMessage:
+                description: "FailureMessage will be set in the event that there is
+                  a terminal problem reconciling the metal3machine and will contain
+                  a more verbose string suitable for logging and human consumption.
+                  \n This field should not be set for transitive errors that a controller
+                  faces that are expected to be fixed automatically over time (like
+                  service outages), but instead indicate that something is fundamentally
+                  wrong with the metal3machine's spec or the configuration of the
+                  controller, and that manual intervention is required. Examples of
+                  terminal errors would be invalid combinations of settings in the
+                  spec, values that are unsupported by the controller, or the responsible
+                  controller itself being critically misconfigured. \n Any transient
+                  errors that occur during the reconciliation of metal3machines can
+                  be added as events to the metal3machine object and/or logged in
+                  the controller's output."
+                type: string
+              failureReason:
+                description: FailureReason will be set on non-retryable errors
+                type: string
+              ready:
+                description: Ready indicates the BootstrapData field is ready to be
+                  consumed
+                type: boolean
+              userData:
+                description: UserData references the Secret that holds user data needed
+                  by the bare metal operator. The Namespace is optional; it will default
+                  to the metal3machine's namespace if not specified.
+                properties:
+                  name:
+                    description: Name is unique within a namespace to reference a
+                      secret resource.
+                    type: string
+                  namespace:
+                    description: Namespace defines the space within which the secret
+                      name must be unique.
+                    type: string
+                type: object
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nodeconfig-controller-manager
+  namespace: metal3
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: nodeconfig-leader-election-role
+  namespace: metal3
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  name: nodeconfig-manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - events
+  - secrets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - bootstrap.tmax.io
+  resources:
+  - nodeconfigs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - bootstrap.tmax.io
+  resources:
+  - nodeconfigs/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - bootstrap.tmax.io
+  resources:
+  - nodeconfigs/status
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - metal3.io
+  resources:
+  - baremetalhosts
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - metal3.io
+  resources:
+  - baremetalhosts/spec
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - metal3.io
+  resources:
+  - baremetalhosts/status
+  verbs:
+  - get
+  - patch
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: nodeconfig-metrics-reader
+rules:
+- nonResourceURLs:
+  - /metrics
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: nodeconfig-proxy-role
+rules:
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: nodeconfig-leader-election-rolebinding
+  namespace: metal3
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: nodeconfig-leader-election-role
+subjects:
+- kind: ServiceAccount
+  name: nodeconfig-controller-manager
+  namespace: metal3
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: nodeconfig-manager-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: nodeconfig-manager-role
+subjects:
+- kind: ServiceAccount
+  name: nodeconfig-controller-manager
+  namespace: metal3
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: nodeconfig-proxy-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: nodeconfig-proxy-role
+subjects:
+- kind: ServiceAccount
+  name: nodeconfig-controller-manager
+  namespace: metal3
+---
+apiVersion: v1
+data:
+  controller_manager_config.yaml: |
+    apiVersion: controller-runtime.sigs.k8s.io/v1alpha1
+    kind: ControllerManagerConfig
+    health:
+      healthProbeBindAddress: :8081
+    metrics:
+      bindAddress: 127.0.0.1:8080
+    webhook:
+      port: 9443
+    leaderElection:
+      leaderElect: true
+      resourceName: c5c3f4de.tmax.io
+kind: ConfigMap
+metadata:
+  name: nodeconfig-manager-config
+  namespace: metal3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    control-plane: controller-manager
+  name: nodeconfig-controller-manager-metrics-service
+  namespace: metal3
+spec:
+  ports:
+  - name: https
+    port: 8443
+    targetPort: https
+  selector:
+    control-plane: controller-manager
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nodeconfig-webhook-service
+  namespace: metal3
+spec:
+  ports:
+  - port: 443
+    targetPort: 9443
+  selector:
+    control-plane: controller-manager
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    control-plane: controller-manager
+    webhook: metal3-io-v1alpha1-nodeconfig
+  name: nodeconfig-controller-manager
+  namespace: metal3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+  template:
+    metadata:
+      labels:
+        control-plane: controller-manager
+        webhook: metal3-io-v1alpha1-nodeconfig
+    spec:
+      containers:
+      - args:
+        - --health-probe-bind-address=:8081
+        - --metrics-bind-address=127.0.0.1:8080
+        - --leader-elect
+        command:
+        - /manager
+        image: 192.168.2.242:32500/nc-operator:v0.0.4
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        name: manager
+        ports:
+        - containerPort: 9443
+          name: webhook-server
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          limits:
+            cpu: 100m
+            memory: 30Mi
+          requests:
+            cpu: 100m
+            memory: 20Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+        volumeMounts:
+        - mountPath: /tmp/k8s-webhook-server/serving-certs
+          name: cert
+          readOnly: true
+      - args:
+        - --secure-listen-address=0.0.0.0:8443
+        - --upstream=http://127.0.0.1:8080/
+        - --logtostderr=true
+        - --v=10
+        image: gcr.io/kubebuilder/kube-rbac-proxy:v0.8.0
+        name: kube-rbac-proxy
+        ports:
+        - containerPort: 8443
+          name: https
+      securityContext:
+        runAsNonRoot: true
+      serviceAccountName: nodeconfig-controller-manager
+      terminationGracePeriodSeconds: 10
+      volumes:
+      - name: cert
+        secret:
+          defaultMode: 420
+          secretName: nco-webhook-server-cert
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: nodeconfig-serving-cert
+  namespace: metal3
+spec:
+  dnsNames:
+  - nodeconfig-webhook-service.metal3.svc
+  - nodeconfig-webhook-service.metal3.svc.cluster.local
+  issuerRef:
+    kind: Issuer
+    name: nodeconfig-selfsigned-issuer
+  secretName: nco-webhook-server-cert
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: nodeconfig-selfsigned-issuer
+  namespace: metal3
+spec:
+  selfSigned: {}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  annotations:
+    cert-manager.io/inject-ca-from: metal3/nodeconfig-serving-cert
+  name: nodeconfig-validating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: nodeconfig-webhook-service
+      namespace: metal3
+      path: /validate-bootstrap-tmax-io-v1alpha1-nodeconfig
+  failurePolicy: Fail
+  name: vnodeconfig.kb.io
+  rules:
+  - apiGroups:
+    - bootstrap.tmax.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - nodeconfigs
+  sideEffects: None
