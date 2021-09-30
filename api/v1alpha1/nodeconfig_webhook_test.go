@@ -64,31 +64,9 @@ func TestNodeConfigCreate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// t.Log("tt.nc", tt.nc)
 			if err := tt.nc.ValidateCreate(); !errorContains(err, tt.wantedErr) {
 				t.Errorf("NodeConfig.ValidateCreate() error = %v, wantErr %v", err, tt.wantedErr)
 			}
 		})
 	}
 }
-
-// func newSecret(name string, data map[string]string) *corev1.Secret {
-// 	secretData := make(map[string][]byte)
-// 	for k, v := range data {
-// 		secretData[k] = []byte(base64.StdEncoding.EncodeToString([]byte(v)))
-// 	}
-
-// 	secret := &corev1.Secret{
-// 		TypeMeta: metav1.TypeMeta{
-// 			Kind:       "Secret",
-// 			APIVersion: "v1",
-// 		},
-// 		ObjectMeta: metav1.ObjectMeta{
-// 			Name:      name,
-// 			Namespace: namespace,
-// 		},
-// 		Data: secretData,
-// 	}
-
-// 	return secret
-// }
