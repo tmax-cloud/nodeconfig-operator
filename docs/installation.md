@@ -1,7 +1,4 @@
-# 설치 가이드
-
-## 구성 요소 및 버전
-* BMO(BareMetal-Operator) - capm3-v0.3.2: (https://github.com/metal3-io/baremetal-operator.git)
+# 설치 및 삭제 가이드
 
 ## Prerequisites
 * git
@@ -9,7 +6,13 @@
 * cri-o version 1.21.2+.
 * kubectl version v1.21.3+.
 * Access to a Kubernetes v1.21.3+ cluster.
+* install cert-manager v1.5.3+
 
+### Operator dependency 
+* BMO(BareMetal-Operator) - capm3-v0.3.2: (https://github.com/metal3-io/baremetal-operator.git)
+
+
+## 설치 가이드
 ### Step 0. Ironic 설정
 * 목적 : Ironic 기동 네트워크 환경에 따라 아래 주소 변경 필요
 * 아래의 command를 실행하여 사용하고자 네트워크 설정으로 변경
