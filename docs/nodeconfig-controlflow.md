@@ -1,5 +1,5 @@
 # NodeConfig Operator - v0.0.3
-![NodeConfig Operator Activity Diagram](activity_diagram.png)
+![NodeConfig Operator Activity Diagram](figures/activity_diagram.png)
 
 ## scenario #1 
 **[정상]** BareMetal Node에 대한 어떠한 CR도 등록되어있지 않은 상태 
@@ -42,4 +42,4 @@
 - NodeConfig의 필드는 다른 CR들을 만드는데에 사용되고 NCO에서 이를 관장함
 - BareMetal 머신에 대한 정보를 BMO가 처리하는 것에대한 설명은 여기서 제외됨
 
-![NodeConfig Operator Sequence Diagram](nco_sequence_diagram.png)
+![NodeConfig Operator Sequence Diagram](figures/nco_sequence_diagram.png)
