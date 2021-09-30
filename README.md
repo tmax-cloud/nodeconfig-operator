@@ -1,5 +1,6 @@
 # NodeConfig-Operator
 
+[![Go Report Card](https://goreportcard.com/badge/github.com/tmax-cloud/cicd-operator)](https://goreportcard.com/report/github.com/tmax-cloud/nodeconfig-operator)
 ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/tmax-cloud/nodeconfig-operator)
 ![GitHub](https://img.shields.io/github/license/tmax-cloud/nodeconfig-operator)
 
