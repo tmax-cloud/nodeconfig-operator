@@ -4,7 +4,6 @@
 
 ## Prerequisites
 * git
-* kustomize
 * go version v1.16+.
 * cri-o version 1.21.2+.
 * kubectl version v1.21.3+.
@@ -29,8 +28,8 @@
 	# BMO와 Ironic간 통신을 위해 필요한 설정: ${BMO_HOME}/deploy/ironic_ci.env
   ```
   
-### Step 1. CRD 작성
-* 설치할 정보를 [nodeconfig CRD](https://github.com/tmax-cloud/nodeconfig-operator/blob/master/docs/api.md)에 작성하여 등록한다.
+### Step 1. CR 작성
+* 설치할 정보를 [nodeconfig CR](https://github.com/tmax-cloud/nodeconfig-operator/blob/master/docs/api.md)에 작성하여 등록한다.
 
 
 ### Step 2. BMO/NC-operator 설치
@@ -42,13 +41,12 @@
   $ kustomize build ${NCO_HOME}/config/default |kubectl apply -f -
   $ kubectl get pods -n metal3
   ```
-* [Step1](https://github.com/tmax-cloud/nodeconfig-operator#step-1-crd-작성)에서 작성한 nodeconfig crd 등록
+* [Step1](https://github.com/tmax-cloud/nodeconfig-operator#step-1-CR-작성)에서 작성한 nodeconfig CR 등록
   ```bash
   $ kustomize -n metal3 apply $nodecofig
   ```
   
-##
-# Step 3. 동작 확인
+### Step 3. 동작 확인
 * *ironic-deployment/default/ironic_bmo_configmap.env*에 작성한 서비스 주소 접근 테스트
   ```bash
   $ curl ${IRONIC_ENDPOINT_IPADDR}:6385/v1/
