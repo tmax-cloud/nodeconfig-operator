@@ -30,11 +30,7 @@
 	# BMO와 Ironic간 통신을 위해 필요한 설정: ${BMO_HOME}/deploy/ironic_ci.env
   ```
   
-### Step 1. CR 작성
-* 설치할 정보를 [nodeconfig CR](https://github.com/tmax-cloud/nodeconfig-operator/blob/master/docs/api.md)에 작성하여 등록한다.
-
-
-### Step 2. BMO/NC Operator 설치
+### Step 1. BMO/NC Operator 설치
 * 아래의 명령어를 사용하여 BMO와 NCO가 정상적으로 설치되었는지 확인한다.
   ```bash
   $ kubectl create namespace metal3
@@ -47,6 +43,12 @@
   ```bash
   $ kustomize -n metal3 apply $nodecofig
   ```
+  
+  
+### Step 2. CR 작성
+* 설치할 정보를 [nodeconfig CR](https://github.com/tmax-cloud/nodeconfig-operator/blob/master/docs/api.md)에 작성하여 등록한다.
+
+
   
 ### Step 3. 동작 확인
 * *ironic-deployment/default/ironic_bmo_configmap.env*에 작성한 서비스 주소 접근 테스트
