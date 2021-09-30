@@ -1,5 +1,5 @@
-# NodeConfig Operator - v0.0.3
-![NodeConfig Operator Activity Diagram](figures/activity_diagram.png)
+# NodeConfig Operator - v0.0.4
+![NodeConfig Operator Activity Diagram](figures/activity_diagram_v0.0.4.png)
 
 ## scenario #1 
 **[정상]** BareMetal Node에 대한 어떠한 CR도 등록되어있지 않은 상태 
