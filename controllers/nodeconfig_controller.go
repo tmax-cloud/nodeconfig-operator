@@ -45,6 +45,7 @@ type NodeConfigReconciler struct {
 	Scheme        *runtime.Scheme
 }
 
+// Scope of NodeConfig
 type Scope struct {
 	logr.Logger
 	Config *bootstrapv1.NodeConfig
@@ -119,15 +120,15 @@ func (r *NodeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}()
 
 	// Create CloudInit data as nodeinitconfig
-	if cloudinitName, err := configMgr.CreateNodeInitConfig(ctx); err != nil {
+	var cloudinitName string
+	if cloudinitName, err = configMgr.CreateNodeInitConfig(ctx); err != nil {
 		configMgr.SetError("Failed to create a cloudinit config")
 		return ctrl.Result{}, err
-	} else {
-		// Set secret reference
-		configMgr.NodeConfig.Status.UserData = &corev1.SecretReference{
-			Name:      cloudinitName,
-			Namespace: config.Namespace,
-		}
+	}
+	// Set secret reference
+	configMgr.NodeConfig.Status.UserData = &corev1.SecretReference{
+		Name:      cloudinitName,
+		Namespace: config.Namespace,
 	}
 
 	// Create the BareMetalHost CR

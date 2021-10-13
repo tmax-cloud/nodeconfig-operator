@@ -200,17 +200,17 @@ const (
 	SHA256 ChecksumType = "sha256"
 	// SHA512 checksum type
 	SHA512 ChecksumType = "sha512"
-
+	// DefaultChecksumType is MD5
 	DefaultChecksumType ChecksumType = MD5
 )
 
 // ChecksumType returns the checksum method to use for image validation.
 func (nc *NodeConfig) ChecksumType() ChecksumType {
-	checksum_type := nc.Spec.Image.ChecksumType
-	if checksum_type == "" {
+	checksumType := nc.Spec.Image.ChecksumType
+	if checksumType == "" {
 		return DefaultChecksumType
 	}
-	return checksum_type
+	return checksumType
 }
 
 // Image holds the details of an image either to provisioned or that
@@ -227,6 +227,7 @@ type Image struct {
 	ChecksumType ChecksumType `json:"checksumType,omitempty"`
 }
 
+// CheckBMHDetails check if BMH value if filled
 func (nc *NodeConfig) CheckBMHDetails() bool {
 	if nc.Spec.BMC.Address != "" &&
 		nc.Spec.BMC.Username != "" &&

@@ -31,6 +31,7 @@ import (
 // log is for logging in this package.
 var nodeconfiglog = logf.Log.WithName("nodeconfig-resource")
 
+// SetupWebhookWithManager init webhook
 func (r *NodeConfig) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
@@ -67,11 +68,11 @@ func (r *NodeConfig) ValidateCreate() error {
 		return errors.NewAggregate(errs)
 	}
 
-	if err := r.os_image_validation(r.Spec.Image.URL, r.Spec.Image.Checksum); err != nil {
+	if err := r.osImageValidation(r.Spec.Image.URL, r.Spec.Image.Checksum); err != nil {
 		errs = append(errs, err)
 		return errors.NewAggregate(errs)
 	}
-	if err := r.bmc_validation(r.Spec.BMC); err != nil {
+	if err := r.bmcValidation(r.Spec.BMC); err != nil {
 		errs = append(errs, err)
 		return errors.NewAggregate(errs)
 	}
@@ -95,8 +96,8 @@ func (r *NodeConfig) ValidateDelete() error {
 	return nil
 }
 
-func (r *NodeConfig) os_image_validation(image_url string, checksum_url string) error {
-	cmd := exec.Command("curl", checksum_url)
+func (r *NodeConfig) osImageValidation(imageURL string, checksumURL string) error {
+	cmd := exec.Command("curl", checksumURL)
 	stdout, err := cmd.Output()
 	slices := strings.Split(string(stdout[:]), " ")
 
@@ -106,18 +107,18 @@ func (r *NodeConfig) os_image_validation(image_url string, checksum_url string) 
 	if len(slices) != 3 {
 		return fmt.Errorf("checksum format error")
 	}
-	if !strings.Contains(image_url, strings.TrimSpace(string(slices[2]))) {
+	if !strings.Contains(imageURL, strings.TrimSpace(string(slices[2]))) {
 		return fmt.Errorf("checksum is different from image name")
 	}
 	return nil
 }
 
-func (r *NodeConfig) bmc_validation(bmc_info *BMC) error {
-	bmc_addr := bmc_info.Address  // "192.168.111.204"
-	bmc_user := bmc_info.Username // "USERID"
-	bmc_pwd := bmc_info.Password  // "PASSW0RD"
+func (r *NodeConfig) bmcValidation(bmcInfo *BMC) error {
+	bmcAddr := bmcInfo.Address  // "192.168.111.204"
+	bmcUser := bmcInfo.Username // "USERID"
+	bmcPwd := bmcInfo.Password  // "PASSW0RD"
 
-	cmd := exec.Command("ipmitool", "-I", "lanplus", "-H", bmc_addr, "-U", bmc_user, "-P", bmc_pwd, "power", "status")
+	cmd := exec.Command("ipmitool", "-I", "lanplus", "-H", bmcAddr, "-U", bmcUser, "-P", bmcPwd, "power", "status")
 	if stdout, err := cmd.Output(); err != nil {
 		return fmt.Errorf("failed to BMC validation. check the BMC address or account")
 	} else if !strings.Contains(string(stdout), "Chassis Power") {

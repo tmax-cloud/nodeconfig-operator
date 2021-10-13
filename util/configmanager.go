@@ -35,6 +35,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// ConfigManager is used to build cloud-init, BMC-meta, ...
 type ConfigManager struct {
 	client client.Client
 
@@ -109,7 +110,7 @@ func (c *ConfigManager) Associate(ctx context.Context, nConfig *bootstrapv1.Node
 	return nil
 }
 
-// findHost return true when it founds the associated host by looking for an annotation
+// FindHost return true when it founds the associated host by looking for an annotation
 // on the machine that contains a reference to the host.
 func (c *ConfigManager) FindHost(ctx context.Context) (*bmh.BareMetalHost, bool) {
 	if host, err := getHost(ctx, c.NodeConfig, c.client, c.Log); err != nil {
@@ -173,31 +174,36 @@ func (c *ConfigManager) setHostSpec(ctx context.Context, host *bmh.BareMetalHost
 	return nil
 }
 
+// CreateNodeInitConfig creates cloud-init
 func (c *ConfigManager) CreateNodeInitConfig(ctx context.Context) (string, error) {
 	c.Log.Info("Creating BootstrapData for the node")
 
-	if cloudInitData, err := cloudinit.NewNode(&cloudinit.NodeInput{
+	var cloudInitData []byte
+	var cloudinitName string
+	var err error
+	if cloudInitData, err = cloudinit.NewNode(&cloudinit.NodeInput{
 		BaseUserData: cloudinit.BaseUserData{
 			AdditionalFiles:   c.NodeConfig.Spec.Files,
 			NTP:               c.NodeConfig.Spec.NTP,
 			CloudInitCommands: c.NodeConfig.Spec.CloudInitCommands,
 			Users:             c.NodeConfig.Spec.Users,
 		},
-	}); err == nil {
-		if cloudinitName, err := c.storeBootstrapData(ctx, cloudInitData); err == nil {
-			return cloudinitName, nil
-		} else if apierrors.IsAlreadyExists(err) {
-			c.Log.Info("cloudinit secret " + c.NodeConfig.Namespace + "/" +
-				c.NodeConfig.Name + "is already created")
-		}
-		c.Log.Error(err, "failed to store bootstrap data")
-		return "", err
-	} else {
+	}); err != nil {
 		c.Log.Error(err, "failed to create node configuration")
 		return "", err
 	}
+
+	if cloudinitName, err = c.storeBootstrapData(ctx, cloudInitData); err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			c.Log.Info("cloudinit secret " + c.NodeConfig.Namespace + "/" + c.NodeConfig.Name + "is already created")
+		}
+		c.Log.Error(err, "failed to store bootstrap data")
+		return "", err
+	}
+	return cloudinitName, nil
 }
 
+// CreateBareMetalHost creates BMH if there is not
 func (c *ConfigManager) CreateBareMetalHost(ctx context.Context) error {
 	c.Log.Info("Creating BareMetalHost for the node")
 	if !c.NodeConfig.CheckBMHDetails() {
@@ -220,25 +226,27 @@ func (c *ConfigManager) CreateBareMetalHost(ctx context.Context) error {
 	bmhost.Spec.BMC.CredentialsName = c.NodeConfig.Name + "-bmc-secret"
 	bmhost.Spec.BMC.DisableCertificateVerification = true
 
+	var secret *corev1.Secret
+	var err error
 	// Create BMH-credential (BMC info)
-	if secret, err := c.storeBMHCredentials(ctx, bmhost); err != nil {
+	if secret, err = c.storeBMHCredentials(ctx, bmhost); err != nil {
 		c.Log.Error(err, "failed to store BMC credentials")
 		return err
-	} else {
-		// Create BMH
-		if err := c.client.Create(ctx, bmhost); err != nil {
-			c.Log.Info("failed to create BareMetalHost")
-			return err
-		}
-		// Set owner reference (the BMH owns BMC-credential)
-		if err := c.setBMHCredentialsOwner(ctx, bmhost, secret); err != nil {
-			c.Log.Info("failed to set BMC-credential owner")
-			return err
-		}
 	}
 
-	c.Log.Info("Success to create BMH",
-		"BMH.spec", bmhost.Spec, "BMH.status", bmhost.Status)
+	// Create BMH
+	if err = c.client.Create(ctx, bmhost); err != nil {
+		c.Log.Info("failed to create BareMetalHost")
+		return err
+	}
+
+	// Set owner reference (the BMH owns BMC-credential)
+	if err = c.setBMHCredentialsOwner(ctx, bmhost, secret); err != nil {
+		c.Log.Info("failed to set BMC-credential owner")
+		return err
+	}
+
+	c.Log.Info("Success to create BMH", "BMH.spec", bmhost.Spec, "BMH.status", bmhost.Status)
 	return nil
 }
 
