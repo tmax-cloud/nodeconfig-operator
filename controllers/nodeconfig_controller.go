@@ -16,8 +16,6 @@ limitations under the License.
 
 package controllers
 
-//ESLEE TODO: add owner_referencing fucntion of nodeconfig (owner: a baremetalhost with the same node name)
-
 import (
 	"context"
 
