@@ -3,7 +3,6 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/tmax-cloud/cicd-operator)](https://goreportcard.com/report/github.com/tmax-cloud/nodeconfig-operator)
 ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/tmax-cloud/nodeconfig-operator)
 ![GitHub](https://img.shields.io/github/license/tmax-cloud/nodeconfig-operator)
-![GitHub release (latest by date)](https://img.shields.io/github/v/release/tmax-cloud/nodeconfig-operator)
 
 
 ![NodeConfig Operator Architecture](docs/figures/NCO_architecture.png)
