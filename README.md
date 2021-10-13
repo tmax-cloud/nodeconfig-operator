@@ -16,3 +16,4 @@ The NodeConfig Operator implements a Kubernetes API for creating linux host conf
 - [NodeConfig Operator Workflow](docs/nodeconfig-workflow.md)
 - [BMO API Documentation](https://github.com/metal3-io/baremetal-operator/blob/capm3-v0.3.2/docs/api.md)
 - [BMO Configuration](https://github.com/metal3-io/baremetal-operator/blob/capm3-v0.3.2/docs/configuration.md)
+- [How Ironic works](https://github.com/metal3-io/metal3-docs/blob/master/design/baremetal-operator/how-ironic-works.md)
