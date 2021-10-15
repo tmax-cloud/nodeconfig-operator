@@ -5,7 +5,7 @@
 ![GitHub](https://img.shields.io/github/license/tmax-cloud/nodeconfig-operator)
 
 
-![NodeConfig Operator Architecture](docs/figures/NCO_architecture.png)
+![NodeConfig Operator Architecture](docs/figures/nco_architecture.png)
 
 The NodeConfig Operator implements a Kubernetes API for creating linux host config. It creates cloud-init data and also creates a BareMetalHost if it doesn't exist. 
 
