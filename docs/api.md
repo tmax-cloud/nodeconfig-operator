@@ -47,10 +47,6 @@ mainly, but not only, provisioning details.
 
 ### NodeConfig status
 
-Moving onto the next block, the *BareMetalHost's* *status* which represents
-the host's current state. Including tested credentials, current hardware
-details, etc.
-
 #### Status fields
 * *ready* -- indicates the BootstrapData field is ready to be consumed
 * *dataSecretName* -- the name of the secret that stores the bootstrap data script
@@ -66,8 +62,6 @@ apiVersion: bootstrap.tmax.io/v1alpha1
 kind: NodeConfig
 metadata:
   name: #Node_ID
-  annotations:
-    metal3.io/BareMetalHost: "metal3/#Node_ID"
 spec:
   bmc:
     address: #IP_ADDR
