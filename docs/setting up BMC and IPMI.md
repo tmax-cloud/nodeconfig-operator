@@ -3,13 +3,34 @@
 ## 설정 가이드
 ### Step 0. BMC 정보 확인
 * 장비에서 BMC 유무 확인 방법
-* 회사마다 장비명은 다름
-* 아래의 사진과 같이 랜선을 꽂는 단자 부분을 확인할시 BMC 사용여부 확인 가능
-* DELL →iDRAC  
-  * ![Dell-iDRAC](figures/Dell-iDRAC.png)
-* IBM → IMM 
-  * ![IBM-IMM](figures/IBM-IMM.jpg)
-
+ * 회사마다 장비명은 다름
+ * 아래의 사진과 같이 랜선을 꽂는 단자 부분을 확인할시 BMC 사용여부 확인 가능
+ * DELL →iDRAC  
+   * ![Dell-iDRAC](figures/Dell-iDRAC.png)
+ * IBM → IMM 
+   * ![IBM-IMM](figures/IBM-IMM.jpg)
+* BMC 정보를 확인하는 command
+  ```bash
+  $ ipmitool bmc info
+  Device ID                 : 32
+  Device Revision           : 0
+  Firmware Revision         : 5.40
+  IPMI Version              : 2.0
+  Manufacturer ID           : 19046
+  Manufacturer Name         : Unknown (0x4A66)
+  Product ID                : 1044 (0x0414)
+  Product Name              : Unknown (0x414)
+  Device Available          : yes
+  Provides Device SDRs      : no
+  Additional Device Support :
+      Sensor Device
+      SDR Repository Device
+      SEL Device
+      FRU Inventory Device
+      IPMB Event Receiver
+      IPMB Event Generator
+      Chassis Device
+  ```
 
 ### Step 1. IPMI 설치하기 
 * 원격지에 있는 node에 접속하기 위해서는 Bmc와 IPMI 관련 설정이 필요
