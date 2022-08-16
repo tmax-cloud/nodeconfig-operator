@@ -11,6 +11,7 @@ The NodeConfig Operator implements a Kubernetes API for creating linux host conf
 
 ## Guide
 - [Installation Guide](./docs/installation.md)
+- [Setting up BMC and IPMI Guide](./docs/setting-up-BMC-and-IPMI.md)
 
 ## Documents
 - [NodeConfig API Documentation](docs/api.md)
