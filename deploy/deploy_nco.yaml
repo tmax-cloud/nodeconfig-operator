@@ -517,7 +517,7 @@ spec:
         - --leader-elect
         command:
         - /manager
-        image: 192.168.2.242:32500/nc-operator:v0.0.4
+        image: 192.168.2.242:32500/nodeconfig-operator:v0.0.4
         livenessProbe:
           httpGet:
             path: /healthz
