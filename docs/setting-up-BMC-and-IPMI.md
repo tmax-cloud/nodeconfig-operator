@@ -8,7 +8,7 @@
  * DELL →iDRAC  
    * ![Dell-iDRAC](figures/Dell-iDRAC.png)
  * LENOVO → IMM 
-   * ![IBM-IMM](figures/IBM-IMM.jpg)
+   * ![LENOVO-IMM](figures/IBM-IMM.jpg)
 * BMC 정보를 확인하는 command
   ```bash
   $ ipmitool bmc info
