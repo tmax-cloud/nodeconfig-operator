@@ -175,6 +175,7 @@ MAC Address: AA:BB:CC:DD:EE:FF \
 Nmap done: 1 IP address (1 host up) scanned in 0.57 seconds
   ```
 ### Step 8. IPMI Over LAN (623 port ) Enabled 하기 
+- 이 부분은 시스템 펌웨어 버전에 따라서 설정하는 부분이 존재유무가 다름
 - bmc ip 를 이용하여 웹브라우저에 들어간다.
 - https://<bmc ip>/#/network에 접속후 IPMI Over LAN Enalbed 하기
 - ![IPMI Over LAN Enalbed](figures/IPMI_Over_LAN.jpg)
