@@ -7,7 +7,7 @@
  * 아래의 사진과 같이 랜선을 꽂는 단자 부분을 확인할시 BMC 사용여부 확인 가능
  * DELL →iDRAC  
    * ![Dell-iDRAC](figures/Dell-iDRAC.png)
- * IBM → IMM 
+ * LENOVO → IMM 
    * ![IBM-IMM](figures/IBM-IMM.jpg)
 * BMC 정보를 확인하는 command
   ```bash
