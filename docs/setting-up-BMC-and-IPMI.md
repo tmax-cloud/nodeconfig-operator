@@ -127,7 +127,7 @@
   ```
 - impmitool command를 활용시 IPMI의 USER의 password 설정
   ```bash
-  $ ipmitool user set password <user id> [<channel num>] 
+  $ ipmitool user set password <user id> <password>[<channel num>] 
   ```
 - impmitool command를 활용시 IPMI의 USER의 privilege 부여
   ```bash
@@ -143,5 +143,42 @@
   * 0x5 - OEM Proprietary
   * 0xF - No Access
   ```
+
+### Step 7. IPMI Over LAN (623 port ) Enabled 여부 확인 하기 
+
+IPMI Over LAN (623 port ) Enabled 이 안되어 있을 경우 원격으로 bmc를 사용하지 못함
+
+-  IPMI Over LAN Enabled 했을때
+ ```bash
+[root@server-5 ~]# nmap -p 623 -sU <bmc ip> 
+Starting Nmap 7.70 ( https://nmap.org ) at 2023-10-16 17:29 KST
+Nmap scan report for  <bmc ip>
+Host is up (0.011s latency).
+
+PORT    STATE SERVICE
+623/udp open  asf-rmcp
+MAC Address: AA:BB:CC:DD:EE:FF\
+
+Nmap done: 1 IP address (1 host up) scanned in 0.56 seconds
+  ```
+- IPMI Over LAN Disabled 했을때
+ ```bash
+[root@server-5 ~]# nmap -p 623 -sU <bmc ip> 
+Starting Nmap 7.70 ( https://nmap.org ) at 2023-10-16 17:29 KST
+Nmap scan report for <bmc ip> 
+Host is up (0.0014s latency).
+
+PORT    STATE         SERVICE
+623/udp open|filtered asf-rmcp
+MAC Address: AA:BB:CC:DD:EE:FF \
+
+Nmap done: 1 IP address (1 host up) scanned in 0.57 seconds
+  ```
+### Step 8. IPMI Over LAN (623 port ) Enabled 하기 
+- bmc ip 를 이용하여 웹브라우저에 들어간다.
+- https://<bmc ip>/#/network에 접속후 IPMI Over LAN Enalbed 하기
+- ![IPMI Over LAN Enalbed](figures/IPMI_Over_LAN_Enalbed.jpg)
+ 
+
 
 
