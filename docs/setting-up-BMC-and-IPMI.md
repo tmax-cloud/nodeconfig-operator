@@ -189,6 +189,11 @@ Nmap done: 1 IP address (1 host up) scanned in 0.57 seconds
 - https:// bmc ip /#/network에 접속후 IPMI Over LAN Enalbed 하기
 - ![IPMI Over LAN Enalbed](figures/IPMI_Over_LAN.jpg)
  
-
+### 참고 
+- 로그인관련 락이 걸렸을때 해결방법
+  - bmc에 새로운 유저를 추가해주고 추가해준 유저를 통해 bmc 웹페이지에 들어간다.
+  - 유저 추가 방법은 Step 6. IPMI USER 생성 참고
+  - bmc configuration 안에 있는 User/LDAP 에서 Lockout period after maximum login failures 이부분을 다시 설정해준다 (시스템 펌웨어 버전마다 탭이 다를 수 있음)
+  - ![User/LDAP](figures/User-LDAP.jpg)
 
 
