@@ -143,6 +143,15 @@
   * 0x5 - OEM Proprietary
   * 0xF - No Access
   ```
+- example
+  ```bash
+  # ipmitool user set name 4 username
+  # ipmitool user set password 4 password
+  # ipmitool user enable 4
+  # ipmitool channel setaccess 1 4 privilege=4
+  # ipmitool channel setaccess 1 4 link=on
+  # ipmitool channel setaccess 1 4 ipmi=on
+  ```
 
 ### Step 7. IPMI Over LAN (623 port ) Enabled 여부 확인 하기 
 
